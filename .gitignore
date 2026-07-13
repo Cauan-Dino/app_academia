@@ -1,0 +1,57 @@
+# ==========================================
+# 1. Configurações de Ambiente e Credenciais (CRÍTICO)
+# ==========================================
+.env
+.env.*
+env_db_test.env
+*.env
+banco_de_dados_teste.sql
+informacoes_app.md
+
+# ==========================================
+# 2. Python & Poetry (app_academia_back)
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.poetry/
+# Geralmente não ignoramos o poetry.lock, mas ignoramos a venv se ela for criada na raiz
+.venv/
+venv/
+ENV/
+
+# ==========================================
+# 3. Flutter / Dart / Pub (app_academia_mobile)
+# ==========================================
+.dart_tool/
+.idea/
+.vscode/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+/安定版/
+
+# Artefatos do Android/iOS
+**/doc/api/
+**/ios/Flutter/.last_build_id
+/android/app/debug
+/android/app/profile
+/android/app/release
+app.*.symbols
+app.*.map.json
+
+# ==========================================
+# 4. Sistema Operacional e Editores
+# ==========================================
+.DS_Store
+Thumbs.db
+*.log
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
