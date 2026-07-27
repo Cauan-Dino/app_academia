@@ -1,13 +1,9 @@
 from datetime import datetime
 from typing import Optional
 from sqlalchemy import ForeignKey, String, Enum, TIMESTAMP, TIME, BOOLEAN, DATE, text
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column
+from back_end.services.infra.database.database import Base
 
-# 1. Definindo a Base moderna
-class Base(DeclarativeBase):
-    pass
-
-# 2. Definindo os modelos com Mapped e mapped_column
 class Usuario(Base):
     __tablename__ = "usuarios"
 
@@ -24,6 +20,18 @@ class Usuario(Base):
     )
     email_verificado: Mapped[bool] = mapped_column(default=False) # False = não verificou email conta não está ativa
 
+# email_verificado, TENTAR FAZER COM REDIS 
+# email_verificado, TENTAR FAZER COM REDIS 
+# email_verificado, TENTAR FAZER COM REDIS 
+# email_verificado, TENTAR FAZER COM REDIS 
+# email_verificado, TENTAR FAZER COM REDIS 
+# email_verificado, TENTAR FAZER COM REDIS 
+# email_verificado, TENTAR FAZER COM REDIS 
+# email_verificado, TENTAR FAZER COM REDIS 
+# email_verificado, TENTAR FAZER COM REDIS 
+# email_verificado, TENTAR FAZER COM REDIS 
+# email_verificado, TENTAR FAZER COM REDIS 
+# email_verificado, TENTAR FAZER COM REDIS 
 
 
 class AgendamentoFixo(Base):

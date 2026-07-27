@@ -1,6 +1,6 @@
 from pydantic import BaseModel,EmailStr,Field
 
-# Scheme que cadastra o personal
+# Schema que cadastra o personal
 class CadastroPersonal(BaseModel):
     nome: str
     telefone: str = Field(..., min_length=10, max_length=15)
@@ -9,8 +9,12 @@ class CadastroPersonal(BaseModel):
     confirmar_senha: str = Field(...,min_length=6,max_length=30)
 
 
-
-# Scheme logar personal
+# Schema logar personal
 class LoginPersonal(BaseModel):
     email: EmailStr
     senha: str
+
+# Schema pra Deletar a conta do Personal
+class DeletarContaPersonal(BaseModel):
+    senha: str
+    confirmar_senha: str
