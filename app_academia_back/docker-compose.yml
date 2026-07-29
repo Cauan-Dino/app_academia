@@ -1,0 +1,36 @@
+services:
+  redis:
+    image: redis:7.2-alpine
+    container_name: redis
+
+    ports:
+      - "${REDIS_PORT}:6379"
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  
+  app:
+    build: .
+    container_name: main_app
+
+    ports:
+      - "8000:8000"
+    
+    depends_on:
+      redis:
+        condition: service_healthy
+
+    env_file:
+      - .env
+    
+    volumes:
+      - ./app_academia/src/back_end:/app/back_end
+      - .:/app
+
+    command: uvicorn back_end.main:app --host 0.0.0.0 --port 8000 --reload
+    restart: unless-stopped

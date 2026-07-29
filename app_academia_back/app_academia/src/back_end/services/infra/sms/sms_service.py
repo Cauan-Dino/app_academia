@@ -26,7 +26,7 @@ class SmsService:
     async def validar_codigo_usuario(self, usuario_id: int, codigo_digitado: int) -> bool: 
         query = (
             select(EnvioSMS)
-            .filter(EnvioSMS.usuario_id == usuario_id)
+            .where(EnvioSMS.usuario_id == usuario_id)
             .order_by(EnvioSMS.data_criacao.desc())
         )
 
@@ -84,7 +84,7 @@ class SmsService:
         # Pega o último SMS enviado
         query = (
             select(EnvioSMS)
-            .filter(EnvioSMS.usuario_id == usuario_id)
+            .where(EnvioSMS.usuario_id == usuario_id)
             .order_by(EnvioSMS.data_criacao.desc())
         )
         resultado = await self.db.execute(query)
@@ -112,7 +112,7 @@ class SmsService:
         query = (
             select(EnvioSMS)
             .func.sum(EnvioSMS.tentativas_erradas) # Conta quantos codigos incorretos foram inseridos na última hora
-            .filter(
+            .where(
                 EnvioSMS.usuario_id == usuario_id,
                 EnvioSMS.data_criacao >= uma_hora_atras
             )
@@ -150,7 +150,7 @@ class SmsService:
         # Conta quantas solicitações foram enviadas em uma hora
         query = (
             select(func.count(EnvioSMS.usuario_id))
-            .filter(
+            .where(
                 EnvioSMS.usuario_id == usuario_id,
                 EnvioSMS.data_criacao >= uma_hora_atras
             )

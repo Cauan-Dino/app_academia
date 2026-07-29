@@ -2,33 +2,40 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from back_end.schemas.personal_schema import DeletarContaPersonal
 from back_end.services.infra.database.models import Usuario
 from back_end.services.domain.personal.cadastro_personal_service import PersonalCadastroService
-from sqlalchemy import select
 from back_end.services.infra.criptografia.criptografia_de_senhas import verificar_senha
 from fastapi import HTTPException
 from back_end.auth.auth_token_itsdangerous import gerar_token_confirmacao_email
 from back_end.services.infra.email.email_service import EmailService
-
+from back_end.services.infra.redis_service.redis_config import redis_client
+from back_end.services.infra.rate_limit.rate_limit_redis import RateLimitService
 
 class DeletePersonalAcountService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.persona_cadastro_service = PersonalCadastroService(db)
         self.email_service = EmailService(db)
+        self.rate_limit_service = RateLimitService()
+
 
     async def deletar_conta_personal(self, body: DeletarContaPersonal, access_token: Usuario):
         self.persona_cadastro_service.validar_senha(body.senha, body.confirmar_senha)
 
-        query = select(Usuario).filter(Usuario.id == access_token.id)
-        resultado = await self.db.execute(query)
-        usuario = resultado.scalar_one_or_none()
+        # --- Rate limit ---
+        chave_tentativas = f'delete_attempts:{access_token.id}'
+        await self.rate_limit_service.verificar_rate_limit(chave=chave_tentativas, limite=5)
 
-        if not verificar_senha(body.senha, usuario.senha):
-            raise HTTPException(status_code=401,detail='Senha incorreta!')
+        if not verificar_senha(body.senha, access_token.senha):
+            # incrementa e define expiração só na primeira tentativa
+            await self.rate_limit_service.incrementar_rate_limit(chave=chave_tentativas, janela_segundos=900)
+            raise HTTPException(status_code=401, detail='Senha incorreta!')
 
-        email_token = gerar_token_confirmacao_email(usuario.email)
-        
-        self.email_service.enviar_email_confirmacao(token=email_token, email=usuario.email)
+        # Senha certa -> Reseta o contador
+        await redis_client.delete(chave_tentativas)
 
-        # SALVAR NO REDIS A QUANTIDADE DE TENTATIVAS DE ERROS NA SENHA
-        # SALVAR NO REDIS A QUANTIDADE DE TENTATIVAS DE ERROS NA SENHA
-        # SALVAR NO REDIS A QUANTIDADE DE TENTATIVAS DE ERROS NA SENHA
+        # --- Envia Email de Confirmação pra EXCLUIR Conta ------------------
+        token = gerar_token_confirmacao_email(access_token.email)
+        try:
+            await self.email_service.enviar_email_confirmacao(token=token, email=access_token.email, usuario_id=access_token.id)
+        except Exception:
+            raise HTTPException(status_code=503, detail="Não foi possível enviar o e-mail de confirmação. Tente novamente mais tarde.")
+

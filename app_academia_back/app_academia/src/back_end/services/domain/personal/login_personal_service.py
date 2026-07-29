@@ -13,22 +13,15 @@ class PersonalLoginService:
 
     async def login_personal(self, body: LoginPersonal) -> dict:
         # Verifica se o usuario EXISTE e está ATIVO
-        query = select(Usuario).filter(Usuario.email == body.email, Usuario.usuario_ativo == True)
+        query = select(Usuario).where(Usuario.email == body.email)
         resultado = await self.db.execute(query)
         usuario = resultado.scalar_one_or_none()
 
-        if usuario is None:
-            raise HTTPException(
-                status_code=401,
-                detail='Senha ou email incorretos!'
-            )
-        
-        # Verifica se as senhas coincidem
-        if not verificar_senha(body.senha, usuario.senha):
-            raise HTTPException(
-                status_code=401,
-                detail='Senha ou email incorretos!'
-            )
+        if usuario is None or not verificar_senha(body.senha, usuario.senha):
+            raise HTTPException(status_code=401, detail='Senha ou email incorretos!')
+        # Impede o usuario de entrar se o email NÃO estiver VERIFICADO
+        if not usuario.usuario_ativo or not usuario.email_verificado:
+            raise HTTPException(status_code=403, detail="Confirme seu e-mail antes de entrar.")
         
         refresh_token = await criar_refresh_token(email=usuario.email,db=self.db) # Cria o refresh token
         access_token = await criar_access_token(email=usuario.email,db=self.db) # Cria access token

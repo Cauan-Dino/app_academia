@@ -4,13 +4,16 @@ from back_end.services.infra.sms.telefone_utils import limpar_numero_telefone
 from back_end.services.infra.database.models import Usuario
 from back_end.schemas.personal_schema import CadastroPersonal
 from sqlalchemy import select
-from back_end.auth.jwt_token import criar_access_token,criar_refresh_token
+from back_end.auth.jwt_token import criar_access_token, criar_refresh_token
 from sqlalchemy.exc import IntegrityError
 from back_end.services.infra.criptografia.criptografia_de_senhas import criptografar_senha
+from back_end.services.infra.email.email_service import EmailService
+from back_end.auth.auth_token_itsdangerous import gerar_token_confirmacao_email
 
 class PersonalCadastroService:
     def __init__(self, db: AsyncSession):
         self.db = db
+        self.email_service = EmailService(db)
 
 
     def validar_senha(self, senha: str, confirmar_senha: str):
@@ -35,8 +38,10 @@ class PersonalCadastroService:
 
 
     async def cadastro_personal(self, body: CadastroPersonal) -> dict:
-        query_usuario_telefone = select(Usuario).filter(Usuario.telefone == body.telefone) # Verifica se o TELEFONE já está cadastrado
-        query_usuario_email = select(Usuario).filter(Usuario.email == body.email) # Verifica se o EMAIL já está cadastrado
+        body.telefone = limpar_numero_telefone(numero=body.telefone)
+
+        query_usuario_telefone = select(Usuario).where(Usuario.telefone == body.telefone) # Verifica se o TELEFONE já está cadastrado
+        query_usuario_email = select(Usuario).where(Usuario.email == body.email) # Verifica se o EMAIL já está cadastrado
 
         resultado_telefone = await self.db.execute(query_usuario_telefone)
         resultado_email = await self.db.execute(query_usuario_email)
@@ -57,28 +62,26 @@ class PersonalCadastroService:
         # Verifica se o usuario EXISTE e esta ATIVO
         if usuario and usuario.usuario_ativo:
             raise HTTPException(
-                status_code=400,
+                status_code=401,
                 detail='Ocorreu um erro ao se cadastrar!'
             )
 
-        body.telefone = limpar_numero_telefone(numero=body.telefone)
         self.validar_senha(body.senha, body.confirmar_senha)
         senha_criptografada = criptografar_senha(body.senha)
 
         # Se o usuario EXISTIR e não estiver ATIVO as informações dele são Reinscritas 
         if usuario and not usuario.usuario_ativo:
-            # # Converte o body para dict (com a senha já tratada)
-            # dados_atualizacao = body.model_dump()
-            # dados_atualizacao["senha"] = senha_criptografada
+            # Converte o body para dict (com a senha já tratada)
+            dados_atualizacao = body.model_dump(exclude={"confirmar_senha"})
+            dados_atualizacao["senha"] = senha_criptografada
 
-            # # Atualiza todos os atributos dinamicamente no modelo do banco
-            # for campo, valor in dados_atualizacao.items():
-            #     setattr(usuario, campo, valor)
-            usuario.nome = body.nome
-            usuario.telefone = body.telefone
-            usuario.senha = senha_criptografada
-            usuario.email = body.email
+            # Atualiza todos os atributos dinamicamente no modelo do banco
+            for campo, valor in dados_atualizacao.items():
+                setattr(usuario, campo, valor)
 
+            usuario.usuario_ativo = False 
+            usuario.email_verificado = False # Usuário precisa confirmar a conta no Email
+ 
         # Se o personal não possuir nenhum cadastro, Ele será CADASTRADO
         else:
             usuario = Usuario(
@@ -86,7 +89,9 @@ class PersonalCadastroService:
                 tipo='personal',
                 telefone=body.telefone,
                 email=body.email,
-                senha=senha_criptografada
+                senha=senha_criptografada,
+                usuario_ativo=False, # Usuário precisa confirmar a conta no Email
+                email_verificado=False
             )
             self.db.add(usuario)
 
@@ -98,13 +103,14 @@ class PersonalCadastroService:
         
         await self.db.refresh(usuario)
 
-        refresh_token = await criar_refresh_token(email=body.email,db=self.db) 
-        access_token = await criar_access_token(email=body.email,db=self.db) 
+        # --- Envia Email de Confirmação ------------------
+        token = gerar_token_confirmacao_email(body.email)
+        try:
+            await self.email_service.enviar_email_confirmacao(token=token, email=body.email, usuario_id=usuario.id)
+        except Exception:
+            raise HTTPException(status_code=503, detail="Não foi possível enviar o e-mail de confirmação. Tente novamente mais tarde.")
         
-        return {
-            'refresh_token':refresh_token,
-            'access_token':access_token,
-            'type':'Bearer'
-            }
+        return {"detail": "Enviamos um link de confirmação para o seu e-mail."}
+
 
 

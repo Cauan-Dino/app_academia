@@ -18,3 +18,6 @@ class LoginPersonal(BaseModel):
 class DeletarContaPersonal(BaseModel):
     senha: str
     confirmar_senha: str
+
+class ReenviarEmailConfirmacao(BaseModel):
+    email: EmailStr

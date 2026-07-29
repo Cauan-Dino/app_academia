@@ -10,7 +10,7 @@ def gerar_token_confirmacao_email(email: str) -> str:
 
 
 
-def validar_token_confirmacao_email(token: str, tempo_expiracao_segundos: int = 3600) -> str:
+def validar_token_confirmacao_email(token: str, tempo_expiracao_segundos: int = 1800) -> str:
     try:
         email = serializer.loads(token, salt='confirmacao-email',max_age=tempo_expiracao_segundos)
         return email

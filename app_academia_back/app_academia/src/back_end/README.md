@@ -1,4 +1,5 @@
-IMPLEMENTAR BANCO DE DADOS ASSINCRONO
+Cadastro - Deve enviar email de confirmacao de conta, alterando usuario_ativo pra True e email_verificado pra True/ Deve ter tratamento de erro com db.rollback() pra evitar com que seja inseridos dados no Banco de dados apos algum erro / No email enviado o usuario deve clicar, assim que clicar a conta dele sera ATIVADA se o token do itsdangerous não tiver expirado, Retornando o refresh e o access_token
 
-Funcoes assincronas permitem que outros endpoints sejam executados sem esperar a aplicacao terminar o primeiro endpoint, assim se o usuario 1 requisitar o endpoint 1 o usuario 2 nao precisaria esperar o endpoint 1 pra solicitar o endpoint 2
+Delete - Deve enviar email pra confirmar exclusão/ Deve ter tratamento de erro com db.rollback() pra evitar com que seja inseridos dados no Banco de dados apos algum erro / No email enviado o usuario deve clicar, assim que clicar a conta dele sera DESATIVADA se o token do itsdangerous não tiver expirado
 
+Login - Verifica se a conta esta ativa e se o email está verificado, Retorna o access e refresh token

@@ -2,7 +2,7 @@ from jose import JWTError,jwt,ExpiredSignatureError
 from datetime import datetime,timezone,timedelta
 import os
 from fastapi import Depends,APIRouter,HTTPException
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import EmailStr
@@ -10,6 +10,7 @@ from back_end.services.infra.database.database import sessao_db
 from back_end.services.infra.database.models import Usuario
 from back_end.services.infra.redis_service.redis_config import redis_client
 import uuid
+from back_end.services.infra.criptografia.criptografia_de_senhas import verificar_senha
 
 oauth = OAuth2PasswordBearer(tokenUrl='/login-form')
 
@@ -22,21 +23,6 @@ TEMPO_ACCESS_TOKEN = int(os.getenv('TEMPO_ACCESS_TOKEN'))
 ALGORITHM = os.getenv('ALGORITHM')
 
 
-# EXPERIMENTAR REMOVER O DEPENDS NA ROTA
-# EXPERIMENTAR REMOVER O DEPENDS NA ROTA
-# EXPERIMENTAR REMOVER O DEPENDS NA ROTA
-# EXPERIMENTAR REMOVER O DEPENDS NA ROTA
-# EXPERIMENTAR REMOVER O DEPENDS NA ROTA
-# EXPERIMENTAR REMOVER O DEPENDS NA ROTA
-# EXPERIMENTAR REMOVER O DEPENDS NA ROTA
-# EXPERIMENTAR REMOVER O DEPENDS NA ROTA
-# EXPERIMENTAR REMOVER O DEPENDS NA ROTA
-# EXPERIMENTAR REMOVER O DEPENDS NA ROTA
-# EXPERIMENTAR REMOVER O DEPENDS NA ROTA
-# EXPERIMENTAR REMOVER O DEPENDS NA ROTA
-# EXPERIMENTAR REMOVER O DEPENDS NA ROTA
-# EXPERIMENTAR REMOVER O DEPENDS NA ROTA
-# EXPERIMENTAR REMOVER O DEPENDS NA ROTA
 
 async def criar_refresh_token(
     db: AsyncSession,
@@ -49,10 +35,10 @@ async def criar_refresh_token(
     resultado = await db.execute(query)
     usuario = resultado.scalar_one_or_none()  
 
-    if usuario is None or not usuario.usuario_ativo:
+    if usuario is None or not usuario.usuario_ativo or not usuario.email_verificado:
         raise HTTPException(
             status_code=401,
-            detail='Usuário não encontrado ou inativo.'
+            detail="Usuário não autorizado."
         )
     
     payload = {
@@ -80,10 +66,10 @@ async def criar_access_token(
     resultado = await db.execute(query)
     usuario = resultado.scalar_one_or_none() 
 
-    if usuario is None or not usuario.usuario_ativo:
+    if usuario is None or not usuario.usuario_ativo or not usuario.email_verificado:
         raise HTTPException(
             status_code=401,
-            detail='Usuário não encontrado ou inativo.'
+            detail="Usuário não autorizado."
         )
     
     payload = {
@@ -126,10 +112,10 @@ async def verificar_refresh_token(
     resultado = await db.execute(query)
     usuario = resultado.scalar_one_or_none()
     
-    if usuario is None or not usuario.usuario_ativo:
+    if usuario is None or not usuario.usuario_ativo or not usuario.email_verificado:
         raise HTTPException(
             status_code=401,
-            detail='Usuário não encontrado ou inativo.'
+            detail="Usuário não autorizado."
         )
     
     return usuario
@@ -159,10 +145,10 @@ async def verificar_access_token(
     resultado = await db.execute(query)
     usuario = resultado.scalar_one_or_none() 
 
-    if usuario is None or not usuario.usuario_ativo:
+    if usuario is None or not usuario.usuario_ativo or not usuario.email_verificado:
         raise HTTPException(
             status_code=401,
-            detail='Usuário não encontrado ou inativo.'
+            detail="Usuário não autorizado."
         )
     
     return usuario
@@ -204,4 +190,37 @@ async def gerar_access_token(
         'access_token':access_token,
         'refresh_token': refresh_token,
         'type':'bearer'
+    }
+
+
+# Permite utilizar o jwt token na documentação Swagger
+@router.post('/login-form')
+async def login_form(
+    formulario: OAuth2PasswordRequestForm = Depends(),
+    db: AsyncSession = Depends(sessao_db)
+    ):
+    # Verifica se o email existe e se o usuario esta ativo
+    query = select(Usuario).where(Usuario.email == formulario.username, Usuario.usuario_ativo == True)
+    resultado = await db.execute(query)
+    usuario = resultado.scalar_one_or_none()
+
+    if not usuario or not verificar_senha(formulario.password, usuario.senha):
+        raise HTTPException(
+            status_code=401,
+            detail='Senha ou email incorretos!'
+        )
+
+    if not usuario.usuario_ativo or not usuario.email_verificado:
+        raise HTTPException(
+            status_code=403,
+            detail="Confirme seu e-mail antes de entrar."
+        )
+    
+    access_token = await criar_access_token(email=usuario.email,db=db)
+    refresh_token = await criar_refresh_token(email=usuario.email,db=db)
+
+    return {
+        "access_token": access_token,
+        "refresh_token":refresh_token,
+        "token_type": "Bearer"
     }
