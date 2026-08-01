@@ -117,7 +117,7 @@ class PersonalCadastroService:
             "Cadastro de personal concluído; e-mail de confirmação enviado",
             extra={"usuario_id": usuario.id},
         )
-        return {"detail": "Enviamos um link de confirmação para o seu e-mail."}
+        return {"message": "Enviamos um link de confirmação para o seu e-mail."}
 
 
 

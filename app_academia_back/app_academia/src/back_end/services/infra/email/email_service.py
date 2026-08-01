@@ -2,7 +2,7 @@ from back_end.services.infra.database.models import Usuario
 from datetime import datetime, timezone
 from fastapi import HTTPException, APIRouter
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
-from back_end.auth.auth_token_itsdangerous import validar_token_confirmacao_email, gerar_token_confirmacao_email
+from back_end.auth.auth_token_itsdangerous import validar_token_confirmacao_email, gerar_token_confirmacao_email, gerar_token_exclusao_conta, validar_token_exclusao_conta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from back_end.services.infra.redis_service.redis_config import redis_client
@@ -28,8 +28,8 @@ class EmailService:
 
 
     # Verifica se o usuário pode enviar outro email
-    async def verificar_cooldown_de_envio_email(self, usuario_id: int, cooldown_segundos: int = 60) -> None:
-        chave_redis = f'cooldown:email_confirmacao:{usuario_id}'
+    async def verificar_cooldown_de_envio_email(self, chave_redis: str, cooldown_segundos: int = 60) -> None:
+        """Verifica o cooldown pra poder reenviar o email"""
         tempo_restante = await redis_client.ttl(chave_redis)
 
         if tempo_restante > 0:
@@ -41,8 +41,9 @@ class EmailService:
 
     # Envia de fato o email
     async def enviar_email_confirmacao(self, token: str, email: str, usuario_id: int) -> None:
-        await self.verificar_cooldown_de_envio_email(usuario_id=usuario_id)
+        """Envia o email de confirmação de criação de conta"""
         chave_redis = f'cooldown:email_confirmacao:{usuario_id}'
+        await self.verificar_cooldown_de_envio_email(chave_redis=chave_redis)
 
         try:
             link_confirmacao = f"https://seuapp.com/confirmar-email?token={token}"
@@ -66,7 +67,8 @@ class EmailService:
 
 
     async def confirmar_email(self, token: str) -> dict:
-        email = validar_token_confirmacao_email(token=token, tempo_expiracao_segundos=1800)
+        """Confirma o email clicando no link enviado no email"""
+        email = validar_token_confirmacao_email(token=token)
 
         # Verifica se o email existe    
         query = select(Usuario).where(Usuario.email == email)
@@ -75,7 +77,7 @@ class EmailService:
 
         if usuario is None:
             raise HTTPException(
-                status_code=400,
+                status_code=404,
                 detail='Usuário não encontrado.'
             )
 
@@ -94,12 +96,14 @@ class EmailService:
 
 
 
-    async def reenviar_email(self, body: ReenviarEmailConfirmacao):
+    async def reenviar_email(self, body: ReenviarEmailConfirmacao) -> dict:
+        """Reenvia o email pra confirmar a conta"""
         query = select(Usuario).where(Usuario.email == body.email)
         resultado = await self.db.execute(query)
         usuario = resultado.scalar_one_or_none()
 
         if usuario is None or usuario.email_verificado == True:
+            logger.info('Conta inexistente ou email já verificado', extra={'email': body.email})
             return {"message": "Se existir uma conta pendente, enviaremos um novo link de confirmação."}
 
         token = gerar_token_confirmacao_email(body.email)
@@ -111,3 +115,84 @@ class EmailService:
         )
 
         return {"message": "Se existir uma conta pendente, enviaremos um novo link de confirmação."}
+
+    # --- Excluir conta --------------------
+
+    async def enviar_email_confirmacao_exclusao_conta(self, email: str, usuario_id: int, token: str) -> None:
+        """Envia email pra confirmar exclusão de conta"""
+        chave_redis = f'cooldown:email_confirmacao_exclusao_de_conta:{usuario_id}'
+        await self.verificar_cooldown_de_envio_email(chave_redis=chave_redis)
+
+        try:
+            link_confirmacao = f"https://seuapp.com/confirmar-exclusao-conta?token={token}"
+
+            mensagem = MessageSchema(
+                subject='Exclusão de conta',
+                recipients=[email],
+                body=f"Clique no link para excluir sua conta: {link_confirmacao}",
+                subtype=MessageType.html
+            )
+
+            fm = FastMail(conf)
+            await fm.send_message(mensagem) # Dispara o email
+            logger.info('E-mail de confirmação de exclusão de conta enviado', extra={'usuario_id': usuario_id})
+
+        # Trata algum possível erro na hora de enviar o email
+        except Exception:
+            await redis_client.delete(chave_redis) # Deleta a chave salva no redis no inicio
+            raise HTTPException(status_code=503, detail="Não foi possível enviar o e-mail. Tente novamente.")
+
+
+    async def confirmar_exclusao_de_conta(self, token: str):
+        """Confirma a exclusão da conta no link do email enviado"""
+        email = validar_token_exclusao_conta(token=token)
+
+        # Verifica se o email existe  
+        query = select(Usuario).where(Usuario.email == email)
+        resultado = await self.db.execute(query)
+        usuario = resultado.scalar_one_or_none()
+
+        if usuario is None:
+            raise HTTPException(
+                status_code=404,
+                detail='Usuário não encontrado.'
+            )
+
+        # Verifica se a conta ja foi excluida
+        if usuario.usuario_ativo == False:
+            return {'message':'Usuário já está excluido!'}
+
+        # Exclui logicamente a conta do usuario
+        usuario.usuario_ativo = False
+        usuario.email_verificado = False
+        try:
+            await self.db.commit()
+        except:
+            await self.db.rollback()
+            raise HTTPException(status_code=500, detail='Ocorreu um erro desconhecido.')
+
+        logger.info('Conta Excluída', extra={'usuario_id': usuario.id})
+        return {'message':"Conta Excluída com sucesso!"}
+
+
+
+    async def reenviar_email_exclusao_conta(self, access_token: Usuario) -> dict:
+        """Reenvia o email pra excluir a conta"""
+        query = select(Usuario).where(Usuario.email == access_token.email)
+        resultado = await self.db.execute(query)
+        usuario = resultado.scalar_one_or_none()
+
+        if usuario is None or usuario.usuario_ativo == False:
+            logger.info('Usuário não existe ou já está excluído logicamente', extra={'usuario_id': access_token.id})
+            return {"message": "Se existir uma conta pendente, enviaremos um novo link de confirmação."}
+
+        token = gerar_token_exclusao_conta(access_token.email)
+
+        await self.enviar_email_confirmacao_exclusao_conta(
+            token=token, 
+            email=access_token.email, 
+            usuario_id=usuario.id
+        )
+
+        return {"message": "Se existir uma conta pendente, enviaremos um novo link de confirmação."}
+        
