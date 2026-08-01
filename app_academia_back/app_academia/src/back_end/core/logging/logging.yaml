@@ -1,0 +1,36 @@
+version: 1
+disable_existing_loggers: false
+
+formatters: # Define o formato do texto do log
+  default:
+    format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    datefmt: "%Y-%m-%d %H:%M:%S"
+
+  json:
+    "()": pythonjsonlogger.jsonlogger.JsonFormatter
+    format: "%(asctime)s %(name)s %(levelname)s %(filename)s %(lineno)d %(message)s"
+    datefmt: "%Y-%m-%d %H:%M:%S"
+
+handlers: # Escolhe pra onde enviar o log
+  console:
+    class: logging.StreamHandler
+    formatter: default
+    stream: ext://sys.stdout
+
+  file:
+    class: logging.handlers.RotatingFileHandler
+    formatter: json
+    filename: /logs/app.log
+    maxBytes: 10485760
+    backupCount: 5
+    encoding: utf-8 # Garante com que caracteres como ç á etc sejam enviados corretamente
+
+root:
+  level: INFO
+  handlers: [console, file]
+
+loggers: # Onde o log é gerado
+  uvicorn:
+    level: INFO
+    handlers: [console]
+    propagate: false

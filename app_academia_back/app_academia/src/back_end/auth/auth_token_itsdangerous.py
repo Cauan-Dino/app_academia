@@ -1,4 +1,4 @@
-from itsdangerous import URLSafeTimedSerializer
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 import os
 from fastapi import HTTPException
 
@@ -14,8 +14,8 @@ def validar_token_confirmacao_email(token: str, tempo_expiracao_segundos: int = 
     try:
         email = serializer.loads(token, salt='confirmacao-email',max_age=tempo_expiracao_segundos)
         return email
-    except:
+    except (SignatureExpired, BadSignature):
         raise HTTPException(
             status_code=400,
-            detail="Link de confirmação inválido ou expirado."
+            detail="Link de confirmação inválido ou expirado.",
         )

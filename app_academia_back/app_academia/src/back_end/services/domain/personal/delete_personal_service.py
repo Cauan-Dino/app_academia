@@ -35,7 +35,11 @@ class DeletePersonalAcountService:
         # --- Envia Email de Confirmação pra EXCLUIR Conta ------------------
         token = gerar_token_confirmacao_email(access_token.email)
         try:
-            await self.email_service.enviar_email_confirmacao(token=token, email=access_token.email, usuario_id=access_token.id)
+            # Criar metodo de eviar_email_confirmar_excluir_conta
+            await self.email_service.enviar_email_confirmacao(token=token, email=access_token.email, usuario_id=access_token.id) 
+        # Pega a exceção de cooldown de segundos
+        except HTTPException:
+            raise 
         except Exception:
             raise HTTPException(status_code=503, detail="Não foi possível enviar o e-mail de confirmação. Tente novamente mais tarde.")
 

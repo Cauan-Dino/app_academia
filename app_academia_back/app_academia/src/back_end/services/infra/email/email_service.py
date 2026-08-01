@@ -8,6 +8,7 @@ from sqlalchemy import select
 from back_end.services.infra.redis_service.redis_config import redis_client
 import os
 from back_end.schemas.personal_schema import ReenviarEmailConfirmacao
+from back_end.core.logging.logs_settings import logger
 
 router = APIRouter(tags=['Envio de email'])
 
@@ -55,6 +56,7 @@ class EmailService:
 
             fm = FastMail(conf)
             await fm.send_message(mensagem) # Dispara o email
+            logger.info('E-mail de confirmação enviado', extra={'usuario_id': usuario_id})
 
         # Trata algum possível erro na hora de enviar o email
         except Exception:
@@ -87,6 +89,7 @@ class EmailService:
         await self.db.commit()
         await self.db.refresh(usuario)
 
+        logger.info('E-mail confirmado', extra={'usuario_id': usuario.id})
         return {'message':"E-mail confirmado com sucesso!"}
 
 

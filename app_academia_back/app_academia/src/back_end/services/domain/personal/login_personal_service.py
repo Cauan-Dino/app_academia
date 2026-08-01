@@ -5,6 +5,7 @@ from back_end.schemas.personal_schema import LoginPersonal
 from sqlalchemy import select
 from back_end.auth.jwt_token import criar_access_token, criar_refresh_token
 from back_end.services.infra.criptografia.criptografia_de_senhas import verificar_senha
+from back_end.core.logging.logs_settings import logger
 
 class PersonalLoginService:
     def __init__(self, db: AsyncSession):
@@ -26,6 +27,7 @@ class PersonalLoginService:
         refresh_token = await criar_refresh_token(email=usuario.email,db=self.db) # Cria o refresh token
         access_token = await criar_access_token(email=usuario.email,db=self.db) # Cria access token
 
+        logger.info('Login personal realizado', extra={'usuario_id': usuario.id})
         return {
             'access_token':access_token,
             'refresh_token':refresh_token,

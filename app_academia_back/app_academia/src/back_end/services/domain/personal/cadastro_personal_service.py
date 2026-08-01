@@ -4,7 +4,7 @@ from back_end.services.infra.sms.telefone_utils import limpar_numero_telefone
 from back_end.services.infra.database.models import Usuario
 from back_end.schemas.personal_schema import CadastroPersonal
 from sqlalchemy import select
-from back_end.auth.jwt_token import criar_access_token, criar_refresh_token
+from back_end.core.logging.logs_settings import logger
 from sqlalchemy.exc import IntegrityError
 from back_end.services.infra.criptografia.criptografia_de_senhas import criptografar_senha
 from back_end.services.infra.email.email_service import EmailService
@@ -107,9 +107,16 @@ class PersonalCadastroService:
         token = gerar_token_confirmacao_email(body.email)
         try:
             await self.email_service.enviar_email_confirmacao(token=token, email=body.email, usuario_id=usuario.id)
+        # Trata o erro de Cooldown de envio
+        except HTTPException:
+            raise
         except Exception:
             raise HTTPException(status_code=503, detail="Não foi possível enviar o e-mail de confirmação. Tente novamente mais tarde.")
-        
+
+        logger.info(
+            "Cadastro de personal concluído; e-mail de confirmação enviado",
+            extra={"usuario_id": usuario.id},
+        )
         return {"detail": "Enviamos um link de confirmação para o seu e-mail."}
 
 

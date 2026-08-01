@@ -15,7 +15,6 @@ from back_end.routers.personal.cadastro_personal import router as cadastro_perso
 from back_end.routers.personal.login_personal import router as login_personal
 from back_end.routers.personal.delete_personal import router as deletar_conta_personal
 
-
 @asynccontextmanager
 async def lifepan(app: FastAPI):
     # roda no STARTUP (uma vez, quando o servidor sobe)
@@ -35,12 +34,19 @@ async def lifepan(app: FastAPI):
 
 app = FastAPI(lifespan=lifepan)
 
+from back_end.core.http import exception_handlers   # <-- ADICIONAR
+from back_end.core.http import middleware  
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Permite requisições de qualquer origem
     allow_methods=["*"],  # Permite todos os métodos (GET, POST, etc.)
     allow_headers=["*"],  # Permite todos os cabeçalhos
 )
+
+@app.get('/')
+async def w():
+    return {'dwad':'dwa'}
 
 app.include_router(cadastro_personal)
 app.include_router(login_personal)
