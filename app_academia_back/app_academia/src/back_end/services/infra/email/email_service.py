@@ -103,7 +103,7 @@ class EmailService:
         usuario = resultado.scalar_one_or_none()
 
         if usuario is None or usuario.email_verificado == True:
-            logger.info('Conta inexistente ou email já verificado', extra={'email': body.email})
+            logger.info('Conta inexistente ou email já verificado')
             return {"message": "Se existir uma conta pendente, enviaremos um novo link de confirmação."}
 
         token = gerar_token_confirmacao_email(body.email)

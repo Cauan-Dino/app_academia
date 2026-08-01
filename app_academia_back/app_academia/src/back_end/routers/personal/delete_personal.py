@@ -20,7 +20,7 @@ async def deletar_conta(
 
 
 
-@router.get('/confirmar-exclusao')
+@router.get('/confirmar-exclusao-conta')
 async def confirmar_exclusao_conta(
     token: str,
     db: AsyncSession = Depends(sessao_db)
@@ -32,8 +32,8 @@ async def confirmar_exclusao_conta(
 
 @router.post('/deletar-conta/reenviar-email')
 async def reenviar_email_exclusao_conta(
-    token: str = Depends(verificar_access_token),
+    access_token: Usuario = Depends(verificar_access_token),
     db: AsyncSession = Depends(sessao_db)
     ):
     service = EmailService(db=db)
-    return await service.reenviar_email_exclusao_conta(access_token=token)
+    return await service.reenviar_email_exclusao_conta(access_token=access_token)

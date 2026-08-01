@@ -32,7 +32,7 @@ def validar_token_confirmacao_email(token: str) -> str:
 # ---- Excluir conta -------------------
 
 def gerar_token_exclusao_conta(email: str) -> str:
-    return serializer.dumps(email, salt='confirmar-exclusao-conta-email')
+    return _gerar_token(email, salt="confirmar-exclusao-conta-email")
 
-def validar_token_exclusao_conta(token: str):
+def validar_token_exclusao_conta(token: str) -> str:
     return _validar_token(token, salt='confirmar-exclusao-conta-email', tempo_expiracao_segundos=1800)
