@@ -37,3 +37,8 @@ async def reenviar_email_exclusao_conta(
     ):
     service = EmailService(db=db)
     return await service.reenviar_email_exclusao_conta(access_token=access_token)
+
+
+@router.get('/')
+async def e(_: str = Depends(verificar_access_token)):
+    return {'m':'m'}

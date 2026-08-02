@@ -44,10 +44,6 @@ app.add_middleware(
     allow_headers=["*"],  # Permite todos os cabeçalhos
 )
 
-@app.get('/')
-async def w():
-    return {'dwad':'dwa'}
-
 app.include_router(cadastro_personal)
 app.include_router(login_personal)
 app.include_router(jwt_router)

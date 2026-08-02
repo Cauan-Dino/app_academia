@@ -1,5 +1,4 @@
 from back_end.services.infra.database.models import Usuario
-from datetime import datetime, timezone
 from fastapi import HTTPException, APIRouter
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
 from back_end.auth.auth_token_itsdangerous import validar_token_confirmacao_email, gerar_token_confirmacao_email, gerar_token_exclusao_conta, validar_token_exclusao_conta
@@ -26,8 +25,31 @@ class EmailService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    async def _enviar_email(self, token: str, mensagem_email: str, subject: str, destinatario: str, body: str, usuario_id: int, chave_redis: str) -> None:
+        """
+        Método helper que envia o email e salva a chave de cooldown no redis
+        Evitando com que o usuário possa pedir um novo email dentro do tempo de expiração salvo no redis
+        """
+        redis_key = f'{chave_redis}:{usuario_id}'
+        await self.verificar_cooldown_de_envio_email(chave_redis=redis_key)
 
-    # Verifica se o usuário pode enviar outro email
+        try:
+            link_confirmacao = f"https://seuapp.com/{mensagem_email}?token={token}"
+            mensagem = MessageSchema(
+                subject=subject,
+                recipients=[destinatario],
+                body=f'{body}: {link_confirmacao}',
+                subtype=MessageType.html
+            )
+            fm = FastMail(conf)
+            await fm.send_message(mensagem) # Dispara o email
+
+        except Exception:
+            await redis_client.delete(redis_key) # Deleta a chave salva no redis no inicio
+            raise HTTPException(status_code=503, detail="Não foi possível enviar o e-mail. Tente novamente.")
+
+            
+
     async def verificar_cooldown_de_envio_email(self, chave_redis: str, cooldown_segundos: int = 60) -> None:
         """Verifica o cooldown pra poder reenviar o email"""
         tempo_restante = await redis_client.ttl(chave_redis)
@@ -39,30 +61,22 @@ class EmailService:
         await redis_client.set(chave_redis, 'enviado', ex=cooldown_segundos) 
 
 
-    # Envia de fato o email
+    # ==============================================
+    #   MÉTODOS DE CONFIRMAÇÃO DE CRIAÇÃO DA CONTA
+    # ==============================================
+
     async def enviar_email_confirmacao(self, token: str, email: str, usuario_id: int) -> None:
         """Envia o email de confirmação de criação de conta"""
-        chave_redis = f'cooldown:email_confirmacao:{usuario_id}'
-        await self.verificar_cooldown_de_envio_email(chave_redis=chave_redis)
-
-        try:
-            link_confirmacao = f"https://seuapp.com/confirmar-email?token={token}"
-
-            mensagem = MessageSchema(
-                subject='Confirme seu e-mail',
-                recipients=[email],
-                body=f"Clique no link para confirmar seu e-mail: {link_confirmacao}",
-                subtype=MessageType.html
-            )
-
-            fm = FastMail(conf)
-            await fm.send_message(mensagem) # Dispara o email
-            logger.info('E-mail de confirmação enviado', extra={'usuario_id': usuario_id})
-
-        # Trata algum possível erro na hora de enviar o email
-        except Exception:
-            await redis_client.delete(chave_redis) # Deleta a chave salva no redis no inicio
-            raise HTTPException(status_code=503, detail="Não foi possível enviar o e-mail. Tente novamente.")
+        await self._enviar_email(
+            token=token,
+            mensagem_email='confirmar-email',
+            subject='Confirme seu e-mail',
+            destinatario=email,
+            body="Clique no link para confirmar seu e-mail",
+            usuario_id=usuario_id,
+            chave_redis=f'cooldown:email_confirmacao:{usuario_id}'
+        )
+        logger.info('E-mail de confirmação enviado', extra={'usuario_id': usuario_id})
 
 
 
@@ -106,6 +120,7 @@ class EmailService:
             logger.info('Conta inexistente ou email já verificado')
             return {"message": "Se existir uma conta pendente, enviaremos um novo link de confirmação."}
 
+        # Gera um token itsdangerous pra colocar no link da mensagem enviada
         token = gerar_token_confirmacao_email(body.email)
 
         await self.enviar_email_confirmacao(
@@ -116,34 +131,27 @@ class EmailService:
 
         return {"message": "Se existir uma conta pendente, enviaremos um novo link de confirmação."}
 
-    # --- Excluir conta --------------------
+
+    # =============================================
+    #     MÉTODOS CONFIRMAÇÃO EXCLUSÃO DE CONTA
+    # =============================================
 
     async def enviar_email_confirmacao_exclusao_conta(self, email: str, usuario_id: int, token: str) -> None:
         """Envia email pra confirmar exclusão de conta"""
-        chave_redis = f'cooldown:email_confirmacao_exclusao_de_conta:{usuario_id}'
-        await self.verificar_cooldown_de_envio_email(chave_redis=chave_redis)
-
-        try:
-            link_confirmacao = f"https://seuapp.com/confirmar-exclusao-conta?token={token}"
-
-            mensagem = MessageSchema(
-                subject='Exclusão de conta',
-                recipients=[email],
-                body=f"Clique no link para excluir sua conta: {link_confirmacao}",
-                subtype=MessageType.html
-            )
-
-            fm = FastMail(conf)
-            await fm.send_message(mensagem) # Dispara o email
-            logger.info('E-mail de confirmação de exclusão de conta enviado', extra={'usuario_id': usuario_id})
-
-        # Trata algum possível erro na hora de enviar o email
-        except Exception:
-            await redis_client.delete(chave_redis) # Deleta a chave salva no redis no inicio
-            raise HTTPException(status_code=503, detail="Não foi possível enviar o e-mail. Tente novamente.")
+        await self._enviar_email(
+            token=token,
+            mensagem_email='confirmar-exclusao-conta',
+            subject='Exclusão de conta',
+            destinatario=email,
+            body='Clique no link para excluir sua conta',
+            chave_redis=f'cooldown:email_confirmacao_exclusao_de_conta:{usuario_id}',
+            usuario_id=usuario_id
+        )
+        logger.info('E-mail de confirmação de exclusão de conta enviado', extra={'usuario_id': usuario_id})
 
 
-    async def confirmar_exclusao_de_conta(self, token: str):
+
+    async def confirmar_exclusao_de_conta(self, token: str) -> dict:
         """Confirma a exclusão da conta no link do email enviado"""
         email = validar_token_exclusao_conta(token=token)
 
@@ -165,6 +173,8 @@ class EmailService:
         # Exclui logicamente a conta do usuario
         usuario.usuario_ativo = False
         usuario.email_verificado = False
+        # usuario.usuario_ativo = True
+        # usuario.email_verificado = True
         try:
             await self.db.commit()
         except:
@@ -186,6 +196,7 @@ class EmailService:
             logger.info('Usuário não existe ou já está excluído logicamente', extra={'usuario_id': access_token.id})
             return {"message": "Se existir uma conta pendente, enviaremos um novo link de confirmação."}
 
+        # Gera um token itsdangerous pra colocar no link da mensagem enviada
         token = gerar_token_exclusao_conta(access_token.email)
 
         await self.enviar_email_confirmacao_exclusao_conta(
@@ -195,4 +206,4 @@ class EmailService:
         )
 
         return {"message": "Se existir uma conta pendente, enviaremos um novo link de confirmação."}
-        
+
