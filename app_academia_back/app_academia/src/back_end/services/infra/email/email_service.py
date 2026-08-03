@@ -173,13 +173,15 @@ class EmailService:
         # Exclui logicamente a conta do usuario
         usuario.usuario_ativo = False
         usuario.email_verificado = False
-        # usuario.usuario_ativo = True
-        # usuario.email_verificado = True
+
         try:
             await self.db.commit()
         except:
             await self.db.rollback()
             raise HTTPException(status_code=500, detail='Ocorreu um erro desconhecido.')
+
+        # Deleta a chave do access_token que é salva em "verificar_access_token"
+        await redis_client.delete(f"usuario_status:{usuario.email}")
 
         logger.info('Conta Excluída', extra={'usuario_id': usuario.id})
         return {'message':"Conta Excluída com sucesso!"}
@@ -188,21 +190,24 @@ class EmailService:
 
     async def reenviar_email_exclusao_conta(self, access_token: Usuario) -> dict:
         """Reenvia o email pra excluir a conta"""
-        query = select(Usuario).where(Usuario.email == access_token.email)
+        email = access_token["email"]
+        usuario_id = access_token["id"]
+
+        query = select(Usuario).where(Usuario.email == email)
         resultado = await self.db.execute(query)
         usuario = resultado.scalar_one_or_none()
 
         if usuario is None or usuario.usuario_ativo == False:
-            logger.info('Usuário não existe ou já está excluído logicamente', extra={'usuario_id': access_token.id})
+            logger.info('Usuário não existe ou já está excluído logicamente', extra={'usuario_id': usuario_id})
             return {"message": "Se existir uma conta pendente, enviaremos um novo link de confirmação."}
 
         # Gera um token itsdangerous pra colocar no link da mensagem enviada
-        token = gerar_token_exclusao_conta(access_token.email)
+        token = gerar_token_exclusao_conta(email)
 
         await self.enviar_email_confirmacao_exclusao_conta(
             token=token, 
-            email=access_token.email, 
-            usuario_id=usuario.id
+            email=email, 
+            usuario_id=usuario_id
         )
 
         return {"message": "Se existir uma conta pendente, enviaremos um novo link de confirmação."}

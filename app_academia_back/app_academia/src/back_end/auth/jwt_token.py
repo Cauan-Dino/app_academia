@@ -11,6 +11,9 @@ from back_end.services.infra.database.models import Usuario
 from back_end.services.infra.redis_service.redis_config import redis_client
 import uuid
 from back_end.services.infra.criptografia.criptografia_de_senhas import verificar_senha
+import json
+from back_end.services.infra.redis_service.usuario_status_cache import salvar_status_usuario_cache, obter_status_usuario
+from back_end.auth.usuario_auth import buscar_usuario_autorizado
 
 oauth = OAuth2PasswordBearer(tokenUrl='/login-form')
 
@@ -21,8 +24,6 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 TEMPO_REFRESH_TOKEN = int(os.getenv('TEMPO_REFRESH_TOKEN'))
 TEMPO_ACCESS_TOKEN = int(os.getenv('TEMPO_ACCESS_TOKEN'))
 ALGORITHM = os.getenv('ALGORITHM')
-
-
 
 async def criar_refresh_token(
     db: AsyncSession,
@@ -57,28 +58,17 @@ async def criar_refresh_token(
 
 async def criar_access_token(
     email: EmailStr,
-    db: AsyncSession,
     time=timedelta(minutes=TEMPO_ACCESS_TOKEN)
     ) -> str:
     tempo = datetime.now(timezone.utc) + time
-    
-    query = select(Usuario).filter(Usuario.email == email)
-    resultado = await db.execute(query)
-    usuario = resultado.scalar_one_or_none() 
 
-    if usuario is None or not usuario.usuario_ativo or not usuario.email_verificado:
-        raise HTTPException(
-            status_code=401,
-            detail="Usuário não autorizado."
-        )
-    
     payload = {
         'sub': email,
         'exp': tempo,
         'iat': datetime.now(timezone.utc), # Data de criação/emissão
         'type':'access'
     }
-
+   
     token = jwt.encode(payload,SECRET_KEY,ALGORITHM)
 
     return token
@@ -90,9 +80,11 @@ async def verificar_refresh_token(
     token: str = Depends(oauth)    
     ) -> Usuario:
     try:
+
         payload = jwt.decode(token,SECRET_KEY,algorithms=[ALGORITHM])
         email = payload.get('sub')
         token_type = payload.get('type')    
+
     except ExpiredSignatureError:
         raise HTTPException(status_code=401, detail='Token expirado!')
     except JWTError:
@@ -104,32 +96,26 @@ async def verificar_refresh_token(
             detail='O token precisa ser do tipo refresh.'
         )
 
-    # Verifica se o token esta na BLACKLIST
+    # Exibe mensagem de erro se o token estiver na BLACKLIST (jti so existe no refresh token)
     if await redis_client.get(f'blacklist:{payload.get("jti")}'):
         raise HTTPException(status_code=401, detail='Token revogado')
 
-    query = select(Usuario).filter(Usuario.email == email)
-    resultado = await db.execute(query)
-    usuario = resultado.scalar_one_or_none()
-    
-    if usuario is None or not usuario.usuario_ativo or not usuario.email_verificado:
-        raise HTTPException(
-            status_code=401,
-            detail="Usuário não autorizado."
-        )
+    usuario = await buscar_usuario_autorizado(email=email, db=db)
     
     return usuario
 
 
 
 async def verificar_access_token(
-    db: AsyncSession = Depends(sessao_db),
-    token: str = Depends(oauth),   
-    ) -> Usuario:
+    token: str = Depends(oauth),
+    db: AsyncSession = Depends(sessao_db) 
+    ) -> dict:
     try:
+
         payload = jwt.decode(token,SECRET_KEY,algorithms=[ALGORITHM])
         email = payload.get('sub')
         token_type = payload.get('type')
+
     except ExpiredSignatureError:
         raise HTTPException(status_code=401,detail='Token expirado!')
     except JWTError:
@@ -140,20 +126,12 @@ async def verificar_access_token(
             status_code=401,
             detail='O token precisa ser do tipo access.'
         )
-    
-    query = select(Usuario).filter(Usuario.email == email)
-    resultado = await db.execute(query)
-    usuario = resultado.scalar_one_or_none() 
 
-    if usuario is None or not usuario.usuario_ativo or not usuario.email_verificado:
-        raise HTTPException(
-            status_code=401,
-            detail="Usuário não autorizado."
-        )
-    
-    return usuario
+    status = await obter_status_usuario(email=email, db=db) # Faz uma query buscando pelo email
 
+    return status
 
+        
 
 @router.get('/refresh')
 async def gerar_access_token(
@@ -161,29 +139,37 @@ async def gerar_access_token(
     db: AsyncSession = Depends(sessao_db),
     usuario: Usuario = Depends(verificar_refresh_token)
     ) -> dict:
+    """
+    Cria um novo refresh e access token e coloca o antigo na blacklist, invalidando ele
+    Se não tiver o jti (id do token) ou Tiver expirado o tempo do token, o usuário precisa fazer login novamente
+    """
+
     try:
         # invalida o refresh token atual (rotation)
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        jti = payload.get('jti')
-        exp_timestamp = payload.get('exp')
+        jti = payload.get('jti') # Pega o id do refresh token
+        exp_timestamp = payload.get('exp') 
 
-        if jti is None or exp_timestamp is None:
-            raise HTTPException(status_code=401, detail='Token inválido para renovação!')
-        
-        tempo_restante = max(int(exp_timestamp - datetime.now(timezone.utc).timestamp()), 0)
-
-        try:
-            if tempo_restante > 0:
-                await redis_client.set(f'blacklist:{jti}', 'true', ex=tempo_restante)
-        except Exception as e:
-            # logger.error(f'Erro ao revogar refresh token no Redis: {e}')
-            # DEIXA PASSAR SEM REVOGAR SE DER ERRO NO REDIS
-            pass
-
+    except ExpiredSignatureError:
+        raise HTTPException(status_code=401,detail='Token expirado!')
     except JWTError:
         raise HTTPException(status_code=401, detail='Token inválido!')
 
-    access_token = await criar_access_token(usuario.email,db=db)
+    if jti is None or exp_timestamp is None:
+        # Obriga o usuario a fazer login novamente pra Renovar o Refresh token
+        raise HTTPException(status_code=401, detail='Token inválido para renovação!')
+    
+    tempo_restante = max(int(exp_timestamp - datetime.now(timezone.utc).timestamp()), 0) # Tempo restante pra expirar o token - horario atual
+
+    try:
+        if tempo_restante > 0:
+            # Coloca o antigo refresh token na blacklist
+            await redis_client.set(f'blacklist:{jti}', 'true', ex=tempo_restante)
+    except Exception as e:
+        # DEIXA PASSAR SEM REVOGAR SE DER ERRO NO REDIS
+        pass
+
+    access_token = await criar_access_token(usuario.email)
     refresh_token = await criar_refresh_token(usuario.email,db=db)
 
     return {
@@ -193,12 +179,14 @@ async def gerar_access_token(
     }
 
 
-# Permite utilizar o jwt token na documentação Swagger
+
 @router.post('/login-form')
 async def login_form(
     formulario: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(sessao_db)
     ):
+    """Permite utilizar o jwt token na documentação Swagger"""
+
     # Verifica se o email existe e se o usuario esta ativo
     query = select(Usuario).where(Usuario.email == formulario.username, Usuario.usuario_ativo == True)
     resultado = await db.execute(query)
@@ -216,7 +204,7 @@ async def login_form(
             detail="Confirme seu e-mail antes de entrar."
         )
     
-    access_token = await criar_access_token(email=usuario.email,db=db)
+    access_token = await criar_access_token(email=usuario.email)
     refresh_token = await criar_refresh_token(email=usuario.email,db=db)
 
     return {

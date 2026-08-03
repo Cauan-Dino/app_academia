@@ -53,21 +53,23 @@ class PersonalCadastroService:
         if (telefone_do_usuario and telefone_do_usuario.usuario_ativo) or \
         (email_do_usuario and email_do_usuario.usuario_ativo):
             raise HTTPException(
-                status_code=400,
-                detail='Ocorreu um erro ao se cadastrar!'
-            )
-
-        usuario = telefone_do_usuario or email_do_usuario
-
-        # Verifica se o usuario EXISTE e esta ATIVO
-        if usuario and usuario.usuario_ativo:
-            raise HTTPException(
-                status_code=401,
+                status_code=409,
                 detail='Ocorreu um erro ao se cadastrar!'
             )
 
         self.validar_senha(body.senha, body.confirmar_senha)
         senha_criptografada = criptografar_senha(body.senha)
+
+        # Evita com que os dois existam, mas sejam pessoas diferentes, ex:
+        # telefone → usuário inativo ID 10
+        # e-mail   → usuário inativo ID 25
+        if telefone_do_usuario and email_do_usuario and telefone_do_usuario.id != email_do_usuario.id:
+            raise HTTPException(
+                status_code=409,
+                detail="Telefone ou e-mail já estão vinculados a outra conta.",
+            )
+        # Pega o objeto da Tabela Usuario via ou telefone ou email
+        usuario = telefone_do_usuario or email_do_usuario 
 
         # Se o usuario EXISTIR e não estiver ATIVO as informações dele são Reinscritas 
         if usuario and not usuario.usuario_ativo:

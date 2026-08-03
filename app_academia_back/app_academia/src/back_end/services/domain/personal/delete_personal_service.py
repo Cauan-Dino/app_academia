@@ -8,6 +8,8 @@ from back_end.auth.auth_token_itsdangerous import gerar_token_exclusao_conta, va
 from back_end.services.infra.email.email_service import EmailService
 from back_end.services.infra.redis_service.redis_config import redis_client
 from back_end.services.infra.rate_limit.rate_limit_redis import RateLimitService
+from sqlalchemy import select
+from back_end.auth.usuario_auth import buscar_usuario_autorizado
 
 class DeletePersonalAcountService:
     def __init__(self, db: AsyncSession):
@@ -17,16 +19,26 @@ class DeletePersonalAcountService:
         self.rate_limit_service = RateLimitService()
 
 
-    async def deletar_conta_personal(self, body: DeletarContaPersonal, access_token: Usuario) -> dict:
+    async def deletar_conta_personal(
+        self, 
+        body: DeletarContaPersonal, 
+        access_token: dict, 
+        db: AsyncSession
+        ) -> dict:
         """Envia o email pro personal poder excluir a conta dele"""
+
         self.persona_cadastro_service.validar_senha(body.senha, body.confirmar_senha)
 
+        query = select(Usuario).where(Usuario.email == access_token['email'])
+        resultado = await db.execute(query)
+        usuario = resultado.scalar_one_or_none()
+        
         # --- Rate limit ---
-        chave_tentativas = f'delete_attempts:{access_token.id}'
+        chave_tentativas = f'delete_attempts:{usuario.id}'
         # Verifica se o usuario erro mais de 5 vezes a senha
         await self.rate_limit_service.verificar_rate_limit(chave=chave_tentativas, limite=5)
 
-        if not verificar_senha(body.senha, access_token.senha):
+        if not verificar_senha(body.senha, usuario.senha):
             # incrementa e define expiração só na primeira tentativa
             await self.rate_limit_service.incrementar_rate_limit(chave=chave_tentativas, janela_segundos=900)
             raise HTTPException(status_code=401, detail='Senha incorreta!')
@@ -35,10 +47,10 @@ class DeletePersonalAcountService:
         await redis_client.delete(chave_tentativas)
 
         # --- Envia Email de Confirmação pra EXCLUIR Conta ------------------
-        token = gerar_token_exclusao_conta(access_token.email)
+        token = gerar_token_exclusao_conta(usuario.email)
         try:
             # Criar metodo de eviar_email_confirmar_excluir_conta
-            await self.email_service.enviar_email_confirmacao_exclusao_conta(token=token, email=access_token.email, usuario_id=access_token.id) 
+            await self.email_service.enviar_email_confirmacao_exclusao_conta(token=token, email=usuario.email, usuario_id=usuario.id) 
         # Pega a exceção de cooldown de segundos
         except HTTPException:
             raise 
