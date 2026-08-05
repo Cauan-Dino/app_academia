@@ -36,3 +36,12 @@ def gerar_token_exclusao_conta(email: str) -> str:
 
 def validar_token_exclusao_conta(token: str) -> str:
     return _validar_token(token, salt='confirmar-exclusao-conta-email', tempo_expiracao_segundos=1800)
+
+
+# ---- Atualizar Informações Personal -------------------
+
+def gerar_token_alterar_senha(email: str) -> str:
+    return _gerar_token(email=email, salt='alterar-senha')
+
+def validar_token_alterar_senha(token: str):
+    return _validar_token(token=token, salt='alterar-senha', tempo_expiracao_segundos=1800)

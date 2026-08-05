@@ -19,5 +19,18 @@ class DeletarContaPersonal(BaseModel):
     senha: str
     confirmar_senha: str
 
+
 class ReenviarEmailConfirmacao(BaseModel):
     email: EmailStr
+
+
+class AlterarPersonalNome(BaseModel):
+    nome: str
+
+class EnviarEmailRedefinirSenha(BaseModel):
+    email: str
+
+
+class AlterarSenhaPersonal(BaseModel):
+    senha: str
+    confirmar_senha: str

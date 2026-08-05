@@ -11,8 +11,7 @@ from back_end.services.infra.database.models import Usuario
 from back_end.services.infra.redis_service.redis_config import redis_client
 import uuid
 from back_end.services.infra.criptografia.criptografia_de_senhas import verificar_senha
-import json
-from back_end.services.infra.redis_service.usuario_status_cache import salvar_status_usuario_cache, obter_status_usuario
+from back_end.services.infra.redis_service.usuario_status_cache import obter_status_usuario
 from back_end.auth.usuario_auth import buscar_usuario_autorizado
 
 oauth = OAuth2PasswordBearer(tokenUrl='/login-form')
@@ -164,11 +163,12 @@ async def gerar_access_token(
     try:
         if tempo_restante > 0:
             # Coloca o antigo refresh token na blacklist
-            await redis_client.set(f'blacklist:{jti}', 'true', ex=tempo_restante)
+            await redis_client.set(f'blacklist:{jti}', 'true', ex=tempo_restante, nx=True) # Impede de implementar o mesmo jti na blacklist 
     except Exception as e:
-        # DEIXA PASSAR SEM REVOGAR SE DER ERRO NO REDIS
-        pass
-
+        raise HTTPException(
+            status_code=503,
+            detail='Erro ao gerar novos tokens.'
+        )
     access_token = await criar_access_token(usuario.email)
     refresh_token = await criar_refresh_token(usuario.email,db=db)
 

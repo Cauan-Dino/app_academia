@@ -4,18 +4,18 @@ from back_end.services.infra.database.models import Usuario
 from back_end.services.domain.personal.cadastro_personal_service import PersonalCadastroService
 from back_end.services.infra.criptografia.criptografia_de_senhas import verificar_senha
 from fastapi import HTTPException
-from back_end.auth.auth_token_itsdangerous import gerar_token_exclusao_conta, validar_token_confirmacao_email
+from back_end.auth.auth_token_itsdangerous import gerar_token_exclusao_conta, validar_token_exclusao_conta
 from back_end.services.infra.email.email_service import EmailService
 from back_end.services.infra.redis_service.redis_config import redis_client
 from back_end.services.infra.rate_limit.rate_limit_redis import RateLimitService
 from sqlalchemy import select
-from back_end.auth.usuario_auth import buscar_usuario_autorizado
+from back_end.core.logging.logs_settings import logger
 
 class DeletePersonalAcountService:
     def __init__(self, db: AsyncSession):
         self.db = db
-        self.persona_cadastro_service = PersonalCadastroService(db)
-        self.email_service = EmailService(db)
+        self.persona_cadastro_service = PersonalCadastroService(self.db)
+        self.email_service = EmailService(self.db)
         self.rate_limit_service = RateLimitService()
 
 
@@ -58,3 +58,43 @@ class DeletePersonalAcountService:
             raise HTTPException(status_code=503, detail="Não foi possível enviar o e-mail de confirmação. Tente novamente mais tarde.")
 
         return {'message':'Enviamos um Link de Confirmação para Excluir a sua Conta.'}
+
+
+
+    async def confirmar_exclusao_de_conta(
+            self, 
+            token: str
+        ) -> dict:
+        """Confirma a exclusão da conta no link do email enviado"""
+        email = validar_token_exclusao_conta(token=token)
+
+        # Verifica se o email existe  
+        query = select(Usuario).where(Usuario.email == email)
+        resultado = await self.db.execute(query)
+        usuario = resultado.scalar_one_or_none()
+
+        if usuario is None:
+            raise HTTPException(
+                status_code=404,
+                detail='Usuário não encontrado.'
+            )
+
+        # Verifica se a conta ja foi excluida
+        if usuario.usuario_ativo == False:
+            return {'message':'Usuário já está excluido!'}
+
+        # Exclui logicamente a conta do usuario
+        usuario.usuario_ativo = False
+        usuario.email_verificado = False
+
+        try:
+            await self.db.commit()
+        except:
+            await self.db.rollback()
+            raise HTTPException(status_code=500, detail='Ocorreu um erro desconhecido.')
+
+        # Deleta a chave do access_token que é salva em "verificar_access_token"
+        await redis_client.delete(f"usuario_status:{usuario.email}")
+
+        logger.info('Conta Excluída', extra={'usuario_id': usuario.id})
+        return {'message':"Conta Excluída com sucesso!"}

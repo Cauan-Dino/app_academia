@@ -21,7 +21,7 @@ async def confirmar_email(
     token: str,
     db: AsyncSession = Depends(sessao_db)
     ):
-    service = EmailService(db)
+    service = PersonalCadastroService(db)
     return await service.confirmar_email(token)
 
 

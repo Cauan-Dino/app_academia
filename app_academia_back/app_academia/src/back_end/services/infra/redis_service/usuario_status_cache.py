@@ -40,7 +40,6 @@ async def obter_status_usuario(
     Se não faz uma query 
     """
 
-    # tenta pegar do cache
     chave_redis = f'usuario_status:{email}'
     try:
         cached = await redis_client.get(chave_redis)

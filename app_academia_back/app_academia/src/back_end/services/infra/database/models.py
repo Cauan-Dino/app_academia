@@ -20,19 +20,8 @@ class Usuario(Base):
     )
     email_verificado: Mapped[bool] = mapped_column(default=False) # False = não verificou email conta não está ativa
 
-# email_verificado, TENTAR FAZER COM REDIS 
-# email_verificado, TENTAR FAZER COM REDIS 
-# email_verificado, TENTAR FAZER COM REDIS 
-# email_verificado, TENTAR FAZER COM REDIS 
-# email_verificado, TENTAR FAZER COM REDIS 
-# email_verificado, TENTAR FAZER COM REDIS 
-# email_verificado, TENTAR FAZER COM REDIS 
-# email_verificado, TENTAR FAZER COM REDIS 
-# email_verificado, TENTAR FAZER COM REDIS 
-# email_verificado, TENTAR FAZER COM REDIS 
-# email_verificado, TENTAR FAZER COM REDIS 
-# email_verificado, TENTAR FAZER COM REDIS 
-
+# Ter duas tabelas Usuario vai ser Personal
+# Criar outra tabela chamada Alunos
 
 class AgendamentoFixo(Base):
     __tablename__ = "agendamentos_fixos"

@@ -7,6 +7,10 @@ async def buscar_usuario_autorizado(
     email: str, 
     db: AsyncSession
     ) -> Usuario:
+    """
+    Busca o usuario via email retornando o objeto de Usuario
+    Ou Exibindo mensagem de erro caso o email não exista ou não esteja ativo ou verificado
+    """
     query = select(Usuario).where(Usuario.email == email)
     resultado = await db.execute(query)
     usuario = resultado.scalar_one_or_none()

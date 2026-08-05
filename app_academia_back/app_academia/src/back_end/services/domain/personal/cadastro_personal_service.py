@@ -8,15 +8,16 @@ from back_end.core.logging.logs_settings import logger
 from sqlalchemy.exc import IntegrityError
 from back_end.services.infra.criptografia.criptografia_de_senhas import criptografar_senha
 from back_end.services.infra.email.email_service import EmailService
-from back_end.auth.auth_token_itsdangerous import gerar_token_confirmacao_email
+from back_end.auth.auth_token_itsdangerous import gerar_token_confirmacao_email, validar_token_confirmacao_email
 
 class PersonalCadastroService:
     def __init__(self, db: AsyncSession):
         self.db = db
-        self.email_service = EmailService(db)
+        self.email_service = EmailService(self.db)
 
 
     def validar_senha(self, senha: str, confirmar_senha: str):
+        """Valida se as senhas enviadas são iguais e possuem mais de 6 digitos e menos de 30"""
         if confirmar_senha != senha:
             raise HTTPException(
                 status_code=400,
@@ -123,3 +124,38 @@ class PersonalCadastroService:
 
 
 
+    async def confirmar_email(
+            self, 
+            token: str
+        ) -> dict:
+        """Confirma o email clicando no link enviado no email"""
+        email = validar_token_confirmacao_email(token=token)
+
+        # Verifica se o email existe    
+        query = select(Usuario).where(Usuario.email == email)
+        resultado = await self.db.execute(query)
+        usuario = resultado.scalar_one_or_none()
+
+        if usuario is None:
+            raise HTTPException(
+                status_code=404,
+                detail='Usuário não encontrado.'
+            )
+
+        # Verifica se o email já tá verificado
+        if usuario.email_verificado is True:
+            return {"detail": "E-mail já confirmado anteriormente."}
+
+        usuario.email_verificado = True # Confirma o email
+        usuario.usuario_ativo = True # Ativa a conta do usuario
+        try:
+            await self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail="Ocorreu um erro ao validar o e-mail. Tente novamente mais tarde."
+            )
+
+        logger.info('E-mail confirmado', extra={'usuario_id': usuario.id})
+        return {'message':"E-mail confirmado com sucesso!"}
