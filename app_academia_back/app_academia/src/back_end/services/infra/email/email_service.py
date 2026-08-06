@@ -12,7 +12,6 @@ from back_end.services.infra.redis_service.redis_config import redis_client
 import os
 from back_end.schemas.personal_schema import ReenviarEmailConfirmacao, EnviarEmailRedefinirSenha, AlterarSenhaPersonal
 from back_end.core.logging.logs_settings import logger
-from back_end.services.domain.personal.cadastro_personal_service import PersonalCadastroService
 
 router = APIRouter(tags=['Envio de email'])
 
@@ -29,7 +28,6 @@ conf = ConnectionConfig(
 class EmailService:
     def __init__(self, db: AsyncSession):
         self.db = db
-        self.cadastro_persoal_service = PersonalCadastroService(self.db)
 
 
     async def _enviar_email(
@@ -59,7 +57,6 @@ class EmailService:
             )
             fm = FastMail(conf)
             await fm.send_message(mensagem) # Dispara o email
-            return {'message':'ok'}
 
         except Exception:
             await redis_client.delete(redis_key) # Deleta a chave salva no redis no inicio
@@ -160,7 +157,7 @@ class EmailService:
 
     async def reenviar_email_exclusao_conta(
             self, 
-            access_token: Usuario
+            access_token: dict
         ) -> dict:
         """Reenvia o email pra excluir a conta"""
 
@@ -190,24 +187,51 @@ class EmailService:
     #   Atualiza as Informações do Personal
     # =======================================
 
-    async def enviar_email_pra_mudar_de_senha(
+    async def enviar_email_pra_mudar_de_senha_logado(
             self,
             body: EnviarEmailRedefinirSenha,
             access_token: dict,
         ) -> None:
-        """Envia um e-mail pro Personal poder Mudar de Senha"""
+        """
+        Envia um e-mail pro Personal poder Mudar de Senha
+        Envia o e-mail Apenas se o Personal estiver logado
+        """
 
         token = gerar_token_alterar_senha(body.email)
 
         await self._enviar_email(
             token=token,
-            mensagem_email='alterar-senha',
+            mensagem_email='/senha/alterar-senha',
             subject='Alteração de Senha',
             destinatario=body.email,
             body='Clique no link para alterar a sua senha',
             usuario_id=access_token['id'],
-            chave_redis='cooldown:email_alterar_senha'
+            chave_redis='cooldown:email_alterar_senha_logado'
         )
-        logger.info('E-mail de redefinição de senhas enviado', extra={'usuario_id': access_token['id']})
+        logger.info('E-mail de redefinição de senhas (logado) enviado', extra={'usuario_id': access_token['id']})
 
 
+
+    async def enviar_email_pra_mudar_de_senha_deslogado(
+            self,
+            body: EnviarEmailRedefinirSenha,
+            usuario_id: int
+        ) -> None:
+        """
+        Envia um e-mail pro Personal poder Mudar de Senha
+        Envia o e-mail quando o Personal não Estiver logado no campo do login "esqueci minha senha"
+        """
+
+        token = gerar_token_alterar_senha(body.email)
+
+        await self._enviar_email(
+            token=token,
+            mensagem_email='/senha/redefinir-senha',
+            subject='Alteração de Senha',
+            destinatario=body.email,
+            body='Clique no link para alterar a sua senha',
+            usuario_id=usuario_id,
+            chave_redis='cooldown:email_alterar_senha_deslogado'
+        )
+
+        logger.info('E-mail de redefinição de senhas (deslogado) enviado', extra={'usuario_id': usuario_id})

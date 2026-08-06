@@ -86,6 +86,7 @@ class DeletePersonalAcountService:
         # Exclui logicamente a conta do usuario
         usuario.usuario_ativo = False
         usuario.email_verificado = False
+        usuario.token_version += 1 # Invalida o access e refresh token atuais
 
         try:
             await self.db.commit()

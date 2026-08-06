@@ -19,6 +19,7 @@ class Usuario(Base):
         TIMESTAMP, server_default=text('CURRENT_TIMESTAMP')
     )
     email_verificado: Mapped[bool] = mapped_column(default=False) # False = não verificou email conta não está ativa
+    token_version: Mapped[int] = mapped_column(default=0, nullable=False) # Invalida access e refresh tokens
 
 # Ter duas tabelas Usuario vai ser Personal
 # Criar outra tabela chamada Alunos

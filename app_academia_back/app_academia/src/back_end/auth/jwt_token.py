@@ -27,6 +27,7 @@ ALGORITHM = os.getenv('ALGORITHM')
 async def criar_refresh_token(
     db: AsyncSession,
     email: EmailStr,
+    token_version: int,
     tempo=timedelta(minutes=TEMPO_REFRESH_TOKEN)
     ) -> str:
     time =  datetime.now(timezone.utc) + tempo
@@ -43,7 +44,8 @@ async def criar_refresh_token(
     
     payload = {
         'sub': email,
-        'exp': time, # Data de expiração
+        'exp': time, # Data de expiração,
+        'ver': token_version,
         'jti': str(uuid.uuid4()), # ID único desse token específico
         'iat': datetime.now(timezone.utc), # Data de criação/emissão
         'type': 'refresh'
@@ -57,12 +59,14 @@ async def criar_refresh_token(
 
 async def criar_access_token(
     email: EmailStr,
+    token_version: int,
     time=timedelta(minutes=TEMPO_ACCESS_TOKEN)
     ) -> str:
     tempo = datetime.now(timezone.utc) + time
 
     payload = {
         'sub': email,
+        'ver': token_version,
         'exp': tempo,
         'iat': datetime.now(timezone.utc), # Data de criação/emissão
         'type':'access'
@@ -100,6 +104,13 @@ async def verificar_refresh_token(
         raise HTTPException(status_code=401, detail='Token revogado')
 
     usuario = await buscar_usuario_autorizado(email=email, db=db)
+
+    # Verifica se o token_version salvo no banco de dados é o mesmo que foi enviado no payload
+    if payload.get('ver') != usuario.token_version:
+        raise HTTPException(
+            status_code=401,
+            detail="Sessão expirada. Faça login novamente."
+        )
     
     return usuario
 
@@ -128,11 +139,18 @@ async def verificar_access_token(
 
     status = await obter_status_usuario(email=email, db=db) # Faz uma query buscando pelo email
 
+    # Verifica se o token_version no cache é o mesmo que esta no payload
+    if status.get("token_version") != payload.get("ver"):
+        raise HTTPException(
+            status_code=401,
+            detail="Sessão expirada. Faça login novamente."
+        )
+
     return status
 
         
 
-@router.get('/refresh')
+@router.post('/refresh')
 async def gerar_access_token(
     token: str = Depends(oauth),
     db: AsyncSession = Depends(sessao_db),
@@ -163,14 +181,22 @@ async def gerar_access_token(
     try:
         if tempo_restante > 0:
             # Coloca o antigo refresh token na blacklist
-            await redis_client.set(f'blacklist:{jti}', 'true', ex=tempo_restante, nx=True) # Impede de implementar o mesmo jti na blacklist 
+            salvo = await redis_client.set(f'blacklist:{jti}', 'true', ex=tempo_restante, nx=True) # Impede de implementar o mesmo jti na blacklist
     except Exception as e:
         raise HTTPException(
             status_code=503,
             detail='Erro ao gerar novos tokens.'
+        ) from e
+
+    # Erro: Caso o jti já esteja no Redis
+    if not salvo:
+        raise HTTPException(
+            status_code=401, 
+            detail="Token revogado."
         )
-    access_token = await criar_access_token(usuario.email)
-    refresh_token = await criar_refresh_token(usuario.email,db=db)
+    
+    access_token = await criar_access_token(email=usuario.email, token_version=usuario.token_version)
+    refresh_token = await criar_refresh_token(email=usuario.email, token_version=usuario.token_version, db=db)
 
     return {
         'access_token':access_token,
@@ -204,8 +230,8 @@ async def login_form(
             detail="Confirme seu e-mail antes de entrar."
         )
     
-    access_token = await criar_access_token(email=usuario.email)
-    refresh_token = await criar_refresh_token(email=usuario.email,db=db)
+    access_token = await criar_access_token(email=usuario.email, token_version=usuario.token_version)
+    refresh_token = await criar_refresh_token(email=usuario.email, db=db, token_version=usuario.token_version)
 
     return {
         "access_token": access_token,

@@ -21,6 +21,7 @@ async def salvar_status_usuario_cache(
         'email_verificado': usuario.email_verificado,
         'id': usuario.id,
         'email': usuario.email,
+        'token_version': usuario.token_version
     }
     try:
         await redis_client.set(f'usuario_status:{usuario.email}', json.dumps(status), ex=60)

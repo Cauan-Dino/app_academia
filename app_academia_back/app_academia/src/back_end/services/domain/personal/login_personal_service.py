@@ -24,8 +24,8 @@ class PersonalLoginService:
         if not usuario.usuario_ativo or not usuario.email_verificado:
             raise HTTPException(status_code=403, detail="Confirme seu e-mail antes de entrar.")
         
-        refresh_token = await criar_refresh_token(email=usuario.email,db=self.db) # Cria o refresh token
-        access_token = await criar_access_token(email=usuario.email,db=self.db) # Cria access token
+        access_token = await criar_access_token(email=usuario.email, token_version=usuario.token_version)
+        refresh_token = await criar_refresh_token(email=usuario.email, token_version=usuario.token_version, db=self.db)
 
         logger.info('Login personal realizado', extra={'usuario_id': usuario.id})
         return {

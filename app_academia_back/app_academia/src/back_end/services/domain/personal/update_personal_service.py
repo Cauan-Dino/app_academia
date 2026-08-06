@@ -59,12 +59,15 @@ class UpdatePersonalDetailsService:
 
 
 
-    async def verificar_email_e_enviar_mudar_senha(
+    async def verificar_email_e_enviar_mudar_senha_logado(
             self,
             body: EnviarEmailRedefinirSenha,
-            access_token: str
+            access_token: dict
         ):
-        """Verifica se o email é igual ao da sessao atual do Personal e envia o email via metodo da classe EmailService"""
+        """
+        Envia o e-mail pra mudar de Senha Apenas pro Personal Logado
+        Verifica se o email é igual ao da sessao atual do Personal e envia o email via metodo da classe EmailService
+        """
 
         email = access_token['email']
 
@@ -75,9 +78,30 @@ class UpdatePersonalDetailsService:
                 detail='E-mail incorreto!'
             )
 
-        await self.email_service.enviar_email_pra_mudar_de_senha(body=body, access_token=access_token)
+        await self.email_service.enviar_email_pra_mudar_de_senha_logado(body=body, access_token=access_token)
 
         return {'message':'E-mail enviado, por favor cheque o seu e-mail.'}
+
+
+
+    async def verificar_email_e_enviar_mudar_senha_deslogado(
+            self,
+            body: EnviarEmailRedefinirSenha
+        ) -> dict:
+        """
+        Envia o e-mail pra mudar de Senha Apenas pro Personal Deslogado
+        """
+
+        query = select(Usuario).where(Usuario.email == body.email)
+        resultado = await self.db.execute(query)
+        usuario = resultado.scalar_one_or_none()
+
+        if not usuario: 
+            return {"message": "Se o e-mail estiver cadastrado, enviaremos as instruções para redefinição de senha."}
+
+        await self.email_service.enviar_email_pra_mudar_de_senha_deslogado(body=body, usuario_id=usuario.id)
+
+        return {"message": "Se o e-mail estiver cadastrado, enviaremos as instruções para redefinição de senha."}
 
 
 
@@ -86,7 +110,10 @@ class UpdatePersonalDetailsService:
             token: str,
             body: AlterarSenhaPersonal
         ) -> dict:
-        """Altera a senha do Personal no Link do Email"""
+        """
+        Altera a senha do Personal no Link do Email
+        Podendo ser tanto deslogado, como Logado
+        """
 
         email = validar_token_alterar_senha(token=token)
 
@@ -102,6 +129,7 @@ class UpdatePersonalDetailsService:
             )
 
         usuario.senha = criptografar_senha(senha=body.senha)
+        usuario.token_version += 1 # Invalida o access e refresh token
 
         try:
             await self.db.commit()

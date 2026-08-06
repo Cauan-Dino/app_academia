@@ -14,6 +14,7 @@ from back_end.services.infra.database.database import engine
 from back_end.routers.personal.cadastro_personal import router as cadastro_personal
 from back_end.routers.personal.login_personal import router as login_personal
 from back_end.routers.personal.delete_personal import router as deletar_conta_personal
+from back_end.routers.personal.update_personal import router as update_personal
 
 @asynccontextmanager
 async def lifepan(app: FastAPI):
@@ -48,4 +49,5 @@ app.include_router(cadastro_personal)
 app.include_router(login_personal)
 app.include_router(jwt_router)
 app.include_router(deletar_conta_personal)
+app.include_router(update_personal)
 
