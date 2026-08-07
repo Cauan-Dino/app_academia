@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "TreinoPro",
+    "slug": "treinopro",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "scheme": "treinopro",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.appacademia.treinopro"
+    },
+    "android": {
+      "package": "com.appacademia.treinopro",
+      "adaptiveIcon": {
+        "backgroundColor": "#121815"
+      }
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-status-bar"
+    ]
+  }
+}

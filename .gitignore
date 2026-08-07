@@ -55,3 +55,5 @@ Thumbs.db
 *.njsproj
 *.sln
 *.swp
+
+app_academia_back/logs/

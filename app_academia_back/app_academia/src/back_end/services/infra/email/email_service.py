@@ -72,10 +72,11 @@ class EmailService:
 
         """Verifica o cooldown pra poder reenviar o email"""
         tempo_restante = await redis_client.ttl(chave_redis)
+        tentativas = await redis_client.get(chave_redis)
 
         if tempo_restante > 0:
             raise HTTPException(status_code=429, detail=f"Aguarde {tempo_restante}s para solicitar outro e-mail.")
-
+        tentativas += 1
         # Salva no redis o cooldown, impedindo o Reenvio até a chave ser apagada
         await redis_client.set(chave_redis, 'enviado', ex=cooldown_segundos) 
 

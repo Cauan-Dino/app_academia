@@ -28,7 +28,7 @@ ALGORITHM = os.getenv('ALGORITHM')
 async def criar_refresh_token(
     email: EmailStr,
     token_version: int,
-    tempo=timedelta(minutes=TEMPO_REFRESH_TOKEN)
+    tempo=timedelta(days=TEMPO_REFRESH_TOKEN)
     ) -> str:
     time =  datetime.now(timezone.utc) + tempo
     
@@ -143,7 +143,6 @@ async def verificar_access_token(
 @router.post('/refresh')
 async def gerar_access_token(
     token: str = Depends(oauth),
-    db: AsyncSession = Depends(sessao_db),
     usuario: Usuario = Depends(verificar_refresh_token)
     ) -> dict:
     """
@@ -186,7 +185,7 @@ async def gerar_access_token(
         )
     
     access_token = await criar_access_token(email=usuario.email, token_version=usuario.token_version)
-    refresh_token = await criar_refresh_token(email=usuario.email, token_version=usuario.token_version, db=db)
+    refresh_token = await criar_refresh_token(email=usuario.email, token_version=usuario.token_version)
 
     return {
         'access_token':access_token,

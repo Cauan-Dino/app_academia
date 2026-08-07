@@ -19,6 +19,7 @@ async def salvar_status_usuario_cache(
     status = {
         'ativo': usuario.usuario_ativo,
         'email_verificado': usuario.email_verificado,
+        'nome': usuario.nome,
         'id': usuario.id,
         'email': usuario.email,
         'token_version': usuario.token_version
