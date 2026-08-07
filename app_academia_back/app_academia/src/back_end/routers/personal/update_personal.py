@@ -59,3 +59,8 @@ async def redefinir_senha(
     ):
     service = UpdatePersonalDetailsService(db=db)
     return await service.alterar_senha_no_link_do_email(token=token, body=body)
+
+
+@router.get('/')
+async def wad(_: str = Depends(verificar_access_token)):
+    return {'o':'o'}

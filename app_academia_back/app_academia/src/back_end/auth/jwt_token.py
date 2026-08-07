@@ -24,23 +24,13 @@ TEMPO_REFRESH_TOKEN = int(os.getenv('TEMPO_REFRESH_TOKEN'))
 TEMPO_ACCESS_TOKEN = int(os.getenv('TEMPO_ACCESS_TOKEN'))
 ALGORITHM = os.getenv('ALGORITHM')
 
+
 async def criar_refresh_token(
-    db: AsyncSession,
     email: EmailStr,
     token_version: int,
     tempo=timedelta(minutes=TEMPO_REFRESH_TOKEN)
     ) -> str:
     time =  datetime.now(timezone.utc) + tempo
-
-    query = select(Usuario).filter(Usuario.email == email)
-    resultado = await db.execute(query)
-    usuario = resultado.scalar_one_or_none()  
-
-    if usuario is None or not usuario.usuario_ativo or not usuario.email_verificado:
-        raise HTTPException(
-            status_code=401,
-            detail="Usuário não autorizado."
-        )
     
     payload = {
         'sub': email,
@@ -231,7 +221,7 @@ async def login_form(
         )
     
     access_token = await criar_access_token(email=usuario.email, token_version=usuario.token_version)
-    refresh_token = await criar_refresh_token(email=usuario.email, db=db, token_version=usuario.token_version)
+    refresh_token = await criar_refresh_token(email=usuario.email, token_version=usuario.token_version)
 
     return {
         "access_token": access_token,
