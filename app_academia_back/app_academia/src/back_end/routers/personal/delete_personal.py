@@ -15,7 +15,7 @@ async def deletar_conta(
     token: dict = Depends(verificar_access_token)
     ):
     service = DeletePersonalAcountService(db)
-    return await service.deletar_conta_personal(body=body, access_token=token, db=db)
+    return await service.solicitar_conta_personal(body=body, access_token=token)
 
 
 

@@ -24,13 +24,17 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-
+    
     env_file:
       - .env
+    
+    environment: # A variável definida em environment sobrescreve o valor vindo de env_file dentro do contêiner.
+      LOG_FILE_PATH: /logs/app.log
     
     volumes:
       - ./app_academia/src/back_end:/app/back_end
       - ./logs:/logs
+      - ./banco_de_dados.db:/app/banco_de_dados.db
 
     command: uvicorn back_end.main:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped 

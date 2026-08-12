@@ -1,17 +1,17 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from fastapi import HTTPException
-from back_end.services.infra.database.models import Usuario
+from back_end.services.infra.database.models import Personal
 
 async def buscar_usuario_autorizado(
     email: str, 
     db: AsyncSession
-    ) -> Usuario:
+    ) -> Personal:
     """
-    Busca o usuario via email retornando o objeto de Usuario
+    Busca o usuario via email retornando o objeto de Personal
     Ou Exibindo mensagem de erro caso o email não exista ou não esteja ativo ou verificado
     """
-    query = select(Usuario).where(Usuario.email == email)
+    query = select(Personal).where(Personal.email == email)
     resultado = await db.execute(query)
     usuario = resultado.scalar_one_or_none()
 

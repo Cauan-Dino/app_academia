@@ -1,19 +1,17 @@
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import ForeignKey, String, Enum, TIMESTAMP, TIME, BOOLEAN, DATE, text
+from sqlalchemy import ForeignKey, String, Enum, TIMESTAMP, TIME, BOOLEAN, DATE, text, UniqueConstraint, Index
 from sqlalchemy.orm import Mapped, mapped_column
 from back_end.services.infra.database.database import Base
 
-class Usuario(Base):
-    __tablename__ = "usuarios"
+class Personal(Base):
+    __tablename__ = "personal"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     nome: Mapped[str] = mapped_column(String(100), nullable=False)
-    tipo: Mapped[str] = mapped_column(Enum('personal', 'aluno', name="tipo_usuario"), nullable=False)
     telefone: Mapped[str] = mapped_column(String(15), unique=True, index=True, nullable=False)
     email: Mapped[Optional[str]] = mapped_column(String(100), unique=True,nullable=True, index=True)
     senha: Mapped[str] = mapped_column(String(255),nullable=False)
-    personal_id: Mapped[Optional[int]] = mapped_column(ForeignKey("usuarios.id"), nullable=True) # Se for um personal, isso fica nulo. Se for um aluno, isso guarda o ID de quem o cadastrou.
     usuario_ativo: Mapped[bool] = mapped_column(default=True)
     data_cadastro: Mapped[datetime] = mapped_column(
         TIMESTAMP, server_default=text('CURRENT_TIMESTAMP')
@@ -21,15 +19,36 @@ class Usuario(Base):
     email_verificado: Mapped[bool] = mapped_column(default=False) # False = não verificou email conta não está ativa
     token_version: Mapped[int] = mapped_column(default=0, nullable=False) # Invalida access e refresh tokens
 
-# Ter duas tabelas Usuario vai ser Personal
-# Criar outra tabela chamada Alunos
+
+class Alunos(Base):
+    __tablename__ = 'alunos'
+    __table_args__ = (
+        UniqueConstraint( # Impede que o personal_id possa ter 2 alunos com nome iguais
+            'personal_id', 
+            'nome', 
+            name='uq_alunos_personal_nome'
+            ),
+
+        UniqueConstraint( # Impede que o personal_id possa ter 2 alunos com telefone iguais
+            'personal_id',
+            'telefone',
+            name='uq_alunos_personal_telefone'
+        )
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nome: Mapped[str] = mapped_column(String(100), nullable=False)
+    telefone: Mapped[str] = mapped_column(String(15) ,nullable=False, index=True)
+
+    personal_id: Mapped[int] = mapped_column(ForeignKey('personal.id'), index=True)
+
 
 class AgendamentoFixo(Base):
     __tablename__ = "agendamentos_fixos"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    personal_id: Mapped[int] = mapped_column(ForeignKey("usuarios.id"))
-    aluno_id: Mapped[int] = mapped_column(ForeignKey("usuarios.id"))
+    personal_id: Mapped[int] = mapped_column(ForeignKey("personal.id"))
+    aluno_id: Mapped[int] = mapped_column(ForeignKey("alunos.id"))
     dia_da_semana: Mapped[int] = mapped_column(nullable=False)
     horario_inicio: Mapped[str] = mapped_column(TIME, nullable=False)
     horario_fim: Mapped[str] = mapped_column(TIME, nullable=False)
@@ -60,7 +79,7 @@ class EnvioSMS(Base):
     __tablename__ = 'envio_de_sms'
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    usuario_id: Mapped[int] = mapped_column(ForeignKey("usuarios.id")) # Vínculo pelo ID
+    usuario_id: Mapped[int] = mapped_column(ForeignKey("personal.id")) # Vínculo pelo ID
     telefone: Mapped[str] = mapped_column(String(15), index=True)
     codigo_sms: Mapped[int] = mapped_column()
     tentativas_erradas: Mapped[int] = mapped_column(default=0)
@@ -70,12 +89,3 @@ class EnvioSMS(Base):
 
 
 
-class ConfirmacaoEmail(Base):
-    __tablename__ = 'confirmacao_email'
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    usuario_id: Mapped[int] = mapped_column(ForeignKey("usuarios.id"), index=True)
-    email: Mapped[str] = mapped_column(String(100), index=True)
-    token: Mapped[str] = mapped_column(String(255))  # token gerado pelo itsdangerous
-    data_criacao: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'))
-    email_confirmado: Mapped[bool] = mapped_column(default=False)

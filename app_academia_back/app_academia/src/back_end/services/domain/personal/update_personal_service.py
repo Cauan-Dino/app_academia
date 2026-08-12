@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from back_end.services.infra.database.models import Usuario
+from back_end.services.infra.database.models import Personal
 from back_end.schemas.personal_schema import AlterarPersonalNome
 from sqlalchemy import select
 from fastapi import HTTPException
@@ -26,7 +26,7 @@ class UpdatePersonalDetailsService:
         ) -> dict:
         """Altera o nome do personal no banco de dados"""
 
-        query = select(Usuario).where(Usuario.id == access_token['id'])
+        query = select(Personal).where(Personal.id == access_token['id'])
         resultado = await self.db.execute(query)
         usuario = resultado.scalar_one_or_none()
 
@@ -92,7 +92,7 @@ class UpdatePersonalDetailsService:
         Envia o e-mail pra mudar de Senha Apenas pro Personal Deslogado
         """
 
-        query = select(Usuario).where(Usuario.email == body.email)
+        query = select(Personal).where(Personal.email == body.email)
         resultado = await self.db.execute(query)
         usuario = resultado.scalar_one_or_none()
 

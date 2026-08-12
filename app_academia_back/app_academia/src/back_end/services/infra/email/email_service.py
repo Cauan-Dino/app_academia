@@ -1,4 +1,4 @@
-from back_end.services.infra.database.models import Usuario
+from back_end.services.infra.database.models import Personal
 from fastapi import HTTPException, APIRouter
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
 from back_end.auth.auth_token_itsdangerous import (
@@ -72,11 +72,10 @@ class EmailService:
 
         """Verifica o cooldown pra poder reenviar o email"""
         tempo_restante = await redis_client.ttl(chave_redis)
-        tentativas = await redis_client.get(chave_redis)
 
         if tempo_restante > 0:
             raise HTTPException(status_code=429, detail=f"Aguarde {tempo_restante}s para solicitar outro e-mail.")
-        tentativas += 1
+        
         # Salva no redis o cooldown, impedindo o Reenvio até a chave ser apagada
         await redis_client.set(chave_redis, 'enviado', ex=cooldown_segundos) 
 
@@ -111,7 +110,7 @@ class EmailService:
             body: ReenviarEmailConfirmacao
         ) -> dict:
         """Reenvia o email pra confirmar a conta"""
-        query = select(Usuario).where(Usuario.email == body.email)
+        query = select(Personal).where(Personal.email == body.email)
         resultado = await self.db.execute(query)
         usuario = resultado.scalar_one_or_none()
 
@@ -165,7 +164,7 @@ class EmailService:
         email = access_token["email"]
         usuario_id = access_token["id"]
 
-        query = select(Usuario).where(Usuario.email == email)
+        query = select(Personal).where(Personal.email == email)
         resultado = await self.db.execute(query)
         usuario = resultado.scalar_one_or_none()
 

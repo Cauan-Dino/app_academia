@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
-from back_end.services.infra.database.models import Usuario
+from back_end.services.infra.database.models import Personal
 from back_end.schemas.personal_schema import LoginPersonal
 from sqlalchemy import select
 from back_end.auth.jwt_token import criar_access_token, criar_refresh_token
@@ -14,7 +14,7 @@ class PersonalLoginService:
 
     async def login_personal(self, body: LoginPersonal) -> dict:
         # Verifica se o usuario EXISTE e está ATIVO
-        query = select(Usuario).where(Usuario.email == body.email)
+        query = select(Personal).where(Personal.email == body.email)
         resultado = await self.db.execute(query)
         usuario = resultado.scalar_one_or_none()
 

@@ -15,6 +15,8 @@ from back_end.routers.personal.cadastro_personal import router as cadastro_perso
 from back_end.routers.personal.login_personal import router as login_personal
 from back_end.routers.personal.delete_personal import router as deletar_conta_personal
 from back_end.routers.personal.update_personal import router as update_personal
+from back_end.routers.aluno.cadastrar_aluno import router as alunos_router
+from back_end.services.infra.redis_service.redis_config import redis_client
 
 @asynccontextmanager
 async def lifepan(app: FastAPI):
@@ -25,7 +27,7 @@ async def lifepan(app: FastAPI):
 
     # tudo DEPOIS do yield roda no SHUTDOWN (uma vez, quando o servidor desliga)
     await engine.dispose()
-    # await redis_client.close()  # fecha a conexão Redis de forma organizada
+    await redis_client.close()  # fecha a conexão Redis de forma organizada
     # await kafka.close()
     # await celery.close() 
     
@@ -50,4 +52,5 @@ app.include_router(login_personal)
 app.include_router(jwt_router)
 app.include_router(deletar_conta_personal)
 app.include_router(update_personal)
+app.include_router(alunos_router)
 

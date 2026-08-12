@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from back_end.schemas.personal_schema import DeletarContaPersonal
-from back_end.services.infra.database.models import Usuario
+from back_end.services.infra.database.models import Personal
 from back_end.services.domain.personal.cadastro_personal_service import PersonalCadastroService
 from back_end.services.infra.criptografia.criptografia_de_senhas import verificar_senha
 from fastapi import HTTPException
@@ -19,18 +19,17 @@ class DeletePersonalAcountService:
         self.rate_limit_service = RateLimitService()
 
 
-    async def deletar_conta_personal(
+    async def solicitar_conta_personal(
         self, 
         body: DeletarContaPersonal, 
         access_token: dict, 
-        db: AsyncSession
         ) -> dict:
         """Envia o email pro personal poder excluir a conta dele"""
 
         self.persona_cadastro_service.validar_senha(body.senha, body.confirmar_senha)
 
-        query = select(Usuario).where(Usuario.email == access_token['email'])
-        resultado = await db.execute(query)
+        query = select(Personal).where(Personal.email == access_token['email'])
+        resultado = await self.db.execute(query)
         usuario = resultado.scalar_one_or_none()
         
         # --- Rate limit ---
@@ -69,7 +68,7 @@ class DeletePersonalAcountService:
         email = validar_token_exclusao_conta(token=token)
 
         # Verifica se o email existe  
-        query = select(Usuario).where(Usuario.email == email)
+        query = select(Personal).where(Personal.email == email)
         resultado = await self.db.execute(query)
         usuario = resultado.scalar_one_or_none()
 
