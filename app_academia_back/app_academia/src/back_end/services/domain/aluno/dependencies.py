@@ -16,5 +16,5 @@ def get_personal_client_register_service(
 def get_personal_client_query_service(
     db: AsyncSession = Depends(sessao_db),
     redis_client: Redis = Depends(get_redis)
-    ):
+    ) -> AlunoQueryService:
     return AlunoQueryService(db=db, redis_client=redis_client)

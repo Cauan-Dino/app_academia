@@ -17,6 +17,8 @@ from back_end.routers.personal.delete_personal import router as deletar_conta_pe
 from back_end.routers.personal.update_personal import router as update_personal
 from back_end.routers.aluno.cadastrar_aluno import router as alunos_router
 from back_end.services.infra.redis_service.redis_config import redis_client
+from back_end.routers.agendamento.cadastrar_aluno_na_aula import router as cadastrar_aluno_na_sala
+from back_end.routers.agendamento.cadastrar_aula import router as cadastrar_aula
 
 @asynccontextmanager
 async def lifepan(app: FastAPI):
@@ -32,14 +34,15 @@ async def lifepan(app: FastAPI):
     # await celery.close() 
     
     # FECHAR A CONEXAO COM O SERVICO VALE PRA TODOS OS SERVICOS | FECHAR A CONEXAO COM O SERVICO VALE PRA TODOS OS SERVICOS
-    # FECHAR A CONEXAO COM O SERVICO VALE PRA TODOS OS SERVICOS | FECHAR A CONEXAO COM O SERVICO VALE PRA TODOS OS SERVICOS
-    # FECHAR A CONEXAO COM O SERVICO VALE PRA TODOS OS SERVICOS | FECHAR A CONEXAO COM O SERVICO VALE PRA TODOS OS SERVICOS
 
 app = FastAPI(lifespan=lifepan)
 
-from back_end.core.http import exception_handlers   # <-- ADICIONAR
+from back_end.core.http import exception_handlers  
 from back_end.core.http import middleware  
 
+# Mudar quando tiver em producao
+# Mudar quando tiver em producao
+# Mudar quando tiver em producao
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Permite requisições de qualquer origem
@@ -53,4 +56,6 @@ app.include_router(jwt_router)
 app.include_router(deletar_conta_personal)
 app.include_router(update_personal)
 app.include_router(alunos_router)
+app.include_router(cadastrar_aula)
+app.include_router(cadastrar_aluno_na_sala)
 

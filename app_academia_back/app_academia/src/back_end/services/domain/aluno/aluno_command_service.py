@@ -2,6 +2,7 @@ from back_end.services.infra.database.models import Alunos
 from sqlalchemy.ext.asyncio import AsyncSession
 from back_end.schemas.cadastrar_aluno import CadastrarAluno, AlterarInformacoesAluno
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException
 from back_end.core.logging.logs_settings import logger
 from redis.asyncio import Redis
@@ -32,11 +33,19 @@ class AlunoCommandService:
 
         try:
             await self.db.commit()
+
+        except IntegrityError:
+            await self.db.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail="Já existe um aluno com esse número de telefone."
+            )
+
         except Exception:
             await self.db.rollback()
             raise HTTPException(
                 status_code=500,
-                detail="Já existe um aluno com esse número de telefone"
+                detail="Ocorreu um erro ao cadastrar o aluno."
             )
 
         try:
@@ -44,7 +53,7 @@ class AlunoCommandService:
                 f"alunos:personal:{personal_id}:todos"
                 )
         except Exception:
-            logger.exception("Não foi possível invalidar o cache dos alunos")
+            logger.exception("Não foi possível invalidar o cache dos alunos", exc_info=False)
             
         return {'message':'Aluno cadastrado com sucesso!'}
 
@@ -75,6 +84,11 @@ class AlunoCommandService:
 
         # Pega apenas os campos que foram enviados no payload
         dados_atualizacao = body.model_dump(exclude_unset=True)
+        if not dados_atualizacao:
+            raise HTTPException(
+                status_code=400,
+                detail="Nenhuma informação foi enviada para alteração.",
+            )
 
         if "telefone" in dados_atualizacao:
             if dados_atualizacao["telefone"] is None:
@@ -121,8 +135,14 @@ class AlunoCommandService:
                 f"alunos:personal:{personal_id}:todos",
                 f"alunos:personal:{personal_id}:aluno:{alunos.id}"
                 )
-        except Exception:
-            logger.exception("Não foi possível invalidar o cache dos alunos")
+        except Exception as erro:
+            logger.exception(
+                "Não foi possível invalidar o cache dos alunos",
+                extra={
+                    'tipo_erro': type(erro).__name__
+                },
+                exc_info=False
+                )
 
         return {"message": "Informações do aluno alteradas com sucesso!"}
 

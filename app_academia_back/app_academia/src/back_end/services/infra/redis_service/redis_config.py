@@ -3,11 +3,13 @@ import os
 
 REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
 REDIS_PORT = int(os.getenv('REDIS_PORT', 6379))
+REDIS_PASSWORD = os.getenv('REDIS_PASSWORD')
 
 redis_pool = redis.BlockingConnectionPool(
     host=REDIS_HOST, 
     port=REDIS_PORT, 
-    db=0, 
+    db=0,
+    password=REDIS_PASSWORD,
     decode_responses=True,       # Retorna strings (str) diretamente em vez de bytes (b'valor')
     max_connections=30,         # Limite total de conexões no pool (equivalente a pool_size + max_overflow)
     timeout=30.0,               # Tempo maximo (em seg) esperando uma conexão ficar livre (equivalente ao pool_timeout)

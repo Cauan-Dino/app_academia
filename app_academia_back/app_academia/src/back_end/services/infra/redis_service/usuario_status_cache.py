@@ -26,8 +26,14 @@ async def salvar_status_usuario_cache(
     }
     try:
         await redis_client.set(f'usuario_status:{usuario.email}', json.dumps(status), ex=60)
-    except Exception:
-        logger.exception("Não foi possível salvar o status do usuário no cache")
+    except Exception as erro:
+        logger.warning(
+            "Não foi possível salvar o status do usuário no cache",
+            extra={
+                'tipo_erro': type(erro).__name__
+            },
+            exc_info=False
+            )
 
     return status
 

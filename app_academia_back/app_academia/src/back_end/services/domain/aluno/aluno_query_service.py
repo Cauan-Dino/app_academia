@@ -100,8 +100,14 @@ class AlunoQueryService:
             if cache is not None:
                 alunos_formatados = json.loads(cache)
 
-        except Exception:
-            logger.exception("Não foi possível consultar o cache dos alunos")
+        except Exception as erro:
+            logger.warning(
+                "Não foi possível consultar o cache dos alunos", 
+                extra={
+                    'tipo_erro': type(erro).__name__
+                },
+                exc_info=False
+            )
 
         if alunos_formatados is None:
             query = (
@@ -120,12 +126,18 @@ class AlunoQueryService:
                     json.dumps(alunos_formatados, ensure_ascii=False),
                     ex=900,
                 )
-            except Exception:
-                logger.exception("Não foi possível salvar os alunos no cache")
+            except Exception as erro:
+                logger.warning(
+                    "Não foi possível salvar os alunos no cache", 
+                    extra={
+                    'tipo_erro': type(erro).__name__
+                    },
+                    exc_info=False
+                )
 
         if nome_aluno:
             nome_validado = self.client_utils.validacao_nome_aluno(nome_aluno)
-
+            
             return [
                 aluno
                 for aluno in alunos_formatados
@@ -152,8 +164,14 @@ class AlunoQueryService:
             if resultado_redis:
                 return json.loads(resultado_redis)
 
-        except Exception:
-            logger.exception("Não foi possível consultar o cache dos alunos")
+        except Exception as erro:
+            logger.warning(
+                "Não foi possível consultar o cache dos alunos",
+                extra={
+                    'tipo_erro': type(erro).__name__
+                },
+                exc_info=False
+                )
 
         query = select(Alunos).where(Alunos.id == aluno_id, Alunos.personal_id == personal_id)
         resultado = await self.db.execute(query)
@@ -176,7 +194,13 @@ class AlunoQueryService:
                     ),
                 ex=900
             )
-        except Exception:
-            logger.exception("Não foi possível salvar o aluno no cache")
+        except Exception as erro:
+            logger.warning(
+                "Não foi possível salvar o aluno no cache",
+                extra={
+                    'tipo_erro': type(erro).__name__
+                }, 
+                exc_info=False
+                )
 
         return aluno_formatado

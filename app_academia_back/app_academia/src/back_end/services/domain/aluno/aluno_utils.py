@@ -48,7 +48,7 @@ class PersonalClientUtils:
         ) -> str:
         """
         Valida e formata o nome_aluno
-        Tirando espaços no inicio e final, e Permitindo
+        Tirando espaços no inicio e final, e Retornando o nome do aluno formatado
         """
         nome_aluno = nome_aluno.strip() # remove espaços no início e no fim\
 
