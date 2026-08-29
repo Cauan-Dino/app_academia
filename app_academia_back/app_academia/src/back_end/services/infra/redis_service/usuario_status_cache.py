@@ -1,14 +1,14 @@
-from back_end.services.infra.redis_service.redis_config import redis_client
-from back_end.services.infra.database.models import Usuario
+from redis.asyncio import Redis
+from back_end.services.infra.database.models import Personal
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from back_end.services.infra.database.models import Usuario
 from back_end.auth.usuario_auth import buscar_usuario_autorizado
+from back_end.core.logging.logs_settings import logger
 import json
 
 async def salvar_status_usuario_cache(
-    usuario: Usuario
+    usuario: Personal,
+    redis_client: Redis
     ) -> dict:
     """
     Salva no redis o status do usuario
@@ -26,18 +26,25 @@ async def salvar_status_usuario_cache(
     }
     try:
         await redis_client.set(f'usuario_status:{usuario.email}', json.dumps(status), ex=60)
-    except Exception:
-        pass
+    except Exception as erro:
+        logger.warning(
+            "Não foi possível salvar o status do usuário no cache",
+            extra={
+                'tipo_erro': type(erro).__name__
+            },
+            exc_info=False
+            )
 
     return status
 
 
 async def obter_status_usuario(
     email: str, 
-    db: AsyncSession
+    db: AsyncSession,
+    redis_client: Redis
     ) -> dict:
     """
-    Retorna um mini objeto de Usuario com email/id etc
+    Retorna um mini objeto de Personal com email/id etc
     Verifica se existe no redis salvo, se sim retorna o valor da chave do redis
     Se não faz uma query 
     """
@@ -53,13 +60,13 @@ async def obter_status_usuario(
         status = json.loads(cached)
         if not status['ativo'] or not status['email_verificado']:
             raise HTTPException(status_code=401, detail="Usuário não autorizado.")
-        # monta um objeto Usuario "leve" com o que precisa, como id/email
+        # monta um objeto Personal "leve" com o que precisa, como id/email
     
     else:
         # não existe (expirou ou é a primeira vez) → consulta o banco
         usuario = await buscar_usuario_autorizado(email=email, db=db)
 
         # Salva no redis uma próxima vez após expirar os status do usuario
-        status = await salvar_status_usuario_cache(usuario=usuario)
+        status = await salvar_status_usuario_cache(usuario=usuario, redis_client=redis_client)
 
     return status

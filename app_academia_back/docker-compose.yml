@@ -3,34 +3,76 @@ services:
     image: redis:7.2-alpine
     container_name: redis
 
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+
+    command: 
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD}
+
     ports:
-      - "${REDIS_PORT}:6379"
+      - "127.0.0.1:6379:6379"
 
     restart: unless-stopped
 
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test:
+        [
+          "CMD-SHELL",
+          "REDISCLI_AUTH=$${REDIS_PASSWORD} redis-cli ping"
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
   
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    
+    volumes:
+      - mysql_data:/var/lib/mysql
+    
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mysqladmin ping -h localhost -u root -p$${MYSQL_ROOT_PASSWORD}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+
   app:
     build: .
     container_name: main_app
 
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     
     depends_on:
       redis:
         condition: service_healthy
-
+      mysql:
+        condition: service_healthy
+    
     env_file:
       - .env
+    
+    environment: # A variável definida em environment sobrescreve o valor vindo de env_file dentro do contêiner.
+      LOG_FILE_PATH: /logs/app.log
     
     volumes:
       - ./app_academia/src/back_end:/app/back_end
       - ./logs:/logs
+#      - ./banco_de_dados.db:/app/banco_de_dados.db
 
     command: uvicorn back_end.main:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped 
@@ -54,7 +96,7 @@ services:
       - esdata:/usr/share/elasticsearch/data
 
     ports:
-      - "${ES_PORT}:9200"
+      - "127.0.0.1:9200:9200"
     
     healthcheck:
       test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health || exit 1"]
@@ -79,7 +121,7 @@ services:
     container_name: kibana
 
     ports:
-      - "${KIBANA_PORT}:5601"
+      - "127.0.0.1:5601:5601"
     
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
@@ -90,3 +132,4 @@ services:
 
 volumes:
   esdata:
+  mysql_data:

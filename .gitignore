@@ -5,7 +5,7 @@
 .env.*
 env_db_test.env
 *.env
-banco_de_dados_teste.sql
+/app_academia_back/banco_de_dados.db
 informacoes_app.md
 
 # ==========================================
@@ -57,3 +57,4 @@ Thumbs.db
 *.swp
 
 app_academia_back/logs/
+app_academia_back/app_academia/src/back_end/README.md

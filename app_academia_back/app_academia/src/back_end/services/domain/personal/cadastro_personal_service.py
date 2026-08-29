@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
 from back_end.services.infra.sms.telefone_utils import limpar_numero_telefone
-from back_end.services.infra.database.models import Usuario
+from back_end.services.infra.database.models import Personal
 from back_end.schemas.personal_schema import CadastroPersonal
 from sqlalchemy import select
 from back_end.core.logging.logs_settings import logger
@@ -9,6 +9,8 @@ from sqlalchemy.exc import IntegrityError
 from back_end.services.infra.criptografia.criptografia_de_senhas import criptografar_senha
 from back_end.services.infra.email.email_service import EmailService
 from back_end.auth.auth_token_itsdangerous import gerar_token_confirmacao_email, validar_token_confirmacao_email
+
+
 
 class PersonalCadastroService:
     def __init__(self, db: AsyncSession):
@@ -41,8 +43,8 @@ class PersonalCadastroService:
     async def cadastro_personal(self, body: CadastroPersonal) -> dict:
         body.telefone = limpar_numero_telefone(numero=body.telefone)
 
-        query_usuario_telefone = select(Usuario).where(Usuario.telefone == body.telefone) # Verifica se o TELEFONE já está cadastrado
-        query_usuario_email = select(Usuario).where(Usuario.email == body.email) # Verifica se o EMAIL já está cadastrado
+        query_usuario_telefone = select(Personal).where(Personal.telefone == body.telefone) # Verifica se o TELEFONE já está cadastrado
+        query_usuario_email = select(Personal).where(Personal.email == body.email) # Verifica se o EMAIL já está cadastrado
 
         resultado_telefone = await self.db.execute(query_usuario_telefone)
         resultado_email = await self.db.execute(query_usuario_email)
@@ -50,12 +52,18 @@ class PersonalCadastroService:
         telefone_do_usuario = resultado_telefone.scalar_one_or_none()
         email_do_usuario = resultado_email.scalar_one_or_none()
 
-        # Verifica se o telefone ou o email já existem
-        if (telefone_do_usuario and telefone_do_usuario.usuario_ativo) or \
-        (email_do_usuario and email_do_usuario.usuario_ativo):
+        # Verifica se o telefone ja existe
+        if telefone_do_usuario and telefone_do_usuario.usuario_ativo:
             raise HTTPException(
                 status_code=409,
-                detail='Ocorreu um erro ao se cadastrar!'
+                detail="Esse telefone já está cadastrado"
+            )
+
+        # Verifica se o email ja existe
+        if email_do_usuario and email_do_usuario.usuario_ativo:
+            raise HTTPException(
+                status_code=409,
+                detail="Esse e-mail já está cadastrado"
             )
 
         self.validar_senha(body.senha, body.confirmar_senha)
@@ -69,7 +77,7 @@ class PersonalCadastroService:
                 status_code=409,
                 detail="Telefone ou e-mail já estão vinculados a outra conta.",
             )
-        # Pega o objeto da Tabela Usuario via ou telefone ou email
+        # Pega o objeto da Tabela Personal via ou telefone ou email
         usuario = telefone_do_usuario or email_do_usuario 
 
         # Se o usuario EXISTIR e não estiver ATIVO as informações dele são Reinscritas 
@@ -87,9 +95,8 @@ class PersonalCadastroService:
  
         # Se o personal não possuir nenhum cadastro, Ele será CADASTRADO
         else:
-            usuario = Usuario(
+            usuario = Personal(
                 nome=body.nome,
-                tipo='personal',
                 telefone=body.telefone,
                 email=body.email,
                 senha=senha_criptografada,
@@ -132,7 +139,7 @@ class PersonalCadastroService:
         email = validar_token_confirmacao_email(token=token)
 
         # Verifica se o email existe    
-        query = select(Usuario).where(Usuario.email == email)
+        query = select(Personal).where(Personal.email == email)
         resultado = await self.db.execute(query)
         usuario = resultado.scalar_one_or_none()
 

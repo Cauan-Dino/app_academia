@@ -7,8 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import EmailStr
 from back_end.services.infra.database.database import sessao_db
-from back_end.services.infra.database.models import Usuario
-from back_end.services.infra.redis_service.redis_config import redis_client
+from back_end.services.infra.database.models import Personal
+from back_end.services.infra.redis_service.redis_config import get_redis
+from redis.asyncio import Redis
 import uuid
 from back_end.services.infra.criptografia.criptografia_de_senhas import verificar_senha
 from back_end.services.infra.redis_service.usuario_status_cache import obter_status_usuario
@@ -70,8 +71,9 @@ async def criar_access_token(
 # Verifica se o token do tipo refresh ainda ta valido
 async def verificar_refresh_token(
     db: AsyncSession = Depends(sessao_db), 
-    token: str = Depends(oauth)    
-    ) -> Usuario:
+    token: str = Depends(oauth),
+    redis_client: Redis = Depends(get_redis)  
+    ) -> Personal:
     try:
 
         payload = jwt.decode(token,SECRET_KEY,algorithms=[ALGORITHM])
@@ -108,7 +110,8 @@ async def verificar_refresh_token(
 
 async def verificar_access_token(
     token: str = Depends(oauth),
-    db: AsyncSession = Depends(sessao_db) 
+    db: AsyncSession = Depends(sessao_db) ,
+    redis_client: Redis = Depends(get_redis)
     ) -> dict:
     try:
 
@@ -127,7 +130,7 @@ async def verificar_access_token(
             detail='O token precisa ser do tipo access.'
         )
 
-    status = await obter_status_usuario(email=email, db=db) # Faz uma query buscando pelo email
+    status = await obter_status_usuario(email=email, db=db, redis_client=redis_client) # Faz uma query buscando pelo email
 
     # Verifica se o token_version no cache é o mesmo que esta no payload
     if status.get("token_version") != payload.get("ver"):
@@ -143,7 +146,8 @@ async def verificar_access_token(
 @router.post('/refresh')
 async def gerar_access_token(
     token: str = Depends(oauth),
-    usuario: Usuario = Depends(verificar_refresh_token)
+    usuario: Personal = Depends(verificar_refresh_token),
+    redis_client: Redis = Depends(get_redis)
     ) -> dict:
     """
     Cria um novo refresh e access token e coloca o antigo na blacklist, invalidando ele
@@ -167,10 +171,15 @@ async def gerar_access_token(
     
     tempo_restante = max(int(exp_timestamp - datetime.now(timezone.utc).timestamp()), 0) # Tempo restante pra expirar o token - horario atual
 
+    if tempo_restante <= 0:
+        raise HTTPException(
+            status_code=401,
+            detail="Token expirado!",
+        )
+    
     try:
-        if tempo_restante > 0:
-            # Coloca o antigo refresh token na blacklist
-            salvo = await redis_client.set(f'blacklist:{jti}', 'true', ex=tempo_restante, nx=True) # Impede de implementar o mesmo jti na blacklist
+        # Coloca o antigo refresh token na blacklist
+        salvo = await redis_client.set(f'blacklist:{jti}', 'true', ex=tempo_restante, nx=True) # Impede de implementar o mesmo jti na blacklist
     except Exception as e:
         raise HTTPException(
             status_code=503,
@@ -203,7 +212,7 @@ async def login_form(
     """Permite utilizar o jwt token na documentação Swagger"""
 
     # Verifica se o email existe e se o usuario esta ativo
-    query = select(Usuario).where(Usuario.email == formulario.username, Usuario.usuario_ativo == True)
+    query = select(Personal).where(Personal.email == formulario.username, Personal.usuario_ativo == True)
     resultado = await db.execute(query)
     usuario = resultado.scalar_one_or_none()
 
