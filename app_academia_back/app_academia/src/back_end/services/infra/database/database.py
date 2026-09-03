@@ -26,4 +26,3 @@ async def criar_tabela():
 async def sessao_db():
     async with SessionLocal() as db:
         yield db 
-

@@ -196,7 +196,7 @@ class StudentAddClassService:
                 status_code=500,
                 detail="Erro ao salvar o aluno na aula.",
             ) from erro 
-
+        
         return {
             "message": "Aluno adicionado à aula com sucesso.",
         }
@@ -226,7 +226,8 @@ class StudentAddClassService:
         # Verifica se há alunos cadastrado na aula
         query = (
             select(
-                ParticipanteAula.aula_fixa_id, 
+                ParticipanteAula.aula_fixa_id,
+                Alunos.id,
                 Alunos.nome,
                 Alunos.personal_id,
                 Alunos.telefone
@@ -253,11 +254,12 @@ class StudentAddClassService:
         return [
             {
                 "aula_id": aula_fixa_id,
+                "aluno_id": aluno_id,
                 "nome_aluno": nome,
                 "personal_id": personal_id,
                 "telefone": telefone
             }
-            for aula_fixa_id, nome, personal_id, telefone in alunos_na_aula
+            for aula_fixa_id, aluno_id, nome, personal_id, telefone in alunos_na_aula
 
         ]
 

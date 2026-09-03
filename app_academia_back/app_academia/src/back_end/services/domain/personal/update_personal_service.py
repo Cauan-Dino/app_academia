@@ -2,6 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from back_end.services.infra.database.models import Personal
 from back_end.schemas.personal_schema import AlterarPersonalNome
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from fastapi import HTTPException
 from back_end.schemas.personal_schema import EnviarEmailRedefinirSenha, AlterarSenhaPersonal
 from back_end.auth.usuario_auth import buscar_usuario_autorizado
@@ -24,9 +25,7 @@ class UpdatePersonalDetailsService:
             body: AlterarPersonalNome,
             access_token: dict
         ) -> dict:
-        """Altera o nome do personal no banco de dados"""
-
-        query = select(Personal).where(Personal.id == access_token['id'])
+        query = select(Personal).where(Personal.id == access_token["id"])
         resultado = await self.db.execute(query)
         usuario = resultado.scalar_one_or_none()
 
@@ -36,26 +35,46 @@ class UpdatePersonalDetailsService:
                 detail="Usuário não autorizado.",
             )
 
-        # Impede mudança de NOME se for IGUAL ao atual
         if usuario.nome == body.nome:
             raise HTTPException(
                 status_code=400,
-                detail="O Nome não pode ser igual ao atual."
+                detail="O nome não pode ser igual ao atual.",
             )
 
         usuario.nome = body.nome
+        chave_cache = f"usuario_status:{usuario.email}"
 
         try:
             await self.db.commit()
-        except Exception:
+        except SQLAlchemyError:
             await self.db.rollback()
+            logger.exception(
+                "Erro ao alterar nome",
+                extra={"usuario_id": access_token["id"]},
+            )
             raise HTTPException(
                 status_code=500,
-                detail='Ocorreu um erro ao tentar mudar o nome!'
+                detail="Ocorreu um erro ao tentar mudar o nome!",
             )
 
-        logger.info('Nome alterado com sucesso', extra={'usuario_id': access_token['id']})
-        return {'message':'Nome alterado com sucesso.'}
+        # Invalida o status em cache para que o novo nome seja carregado
+        try:
+            await redis_client.delete(chave_cache)
+        except Exception as erro:
+            logger.warning(
+                "Não foi possível invalidar o cache do usuário",
+                extra={
+                    "usuario_id": access_token["id"],
+                    "tipo_erro": type(erro).__name__,
+                },
+            )
+
+        logger.info(
+            "Nome alterado com sucesso",
+            extra={"usuario_id": access_token["id"]},
+        )
+
+        return {"message": "Nome alterado com sucesso."}
 
 
 
