@@ -2,19 +2,16 @@ from fastapi import (
     HTTPException,
 )
 from fastapi.responses import PlainTextResponse
-import os
 import secrets
 import hmac
 import hashlib
-from back_end.core.logging.logs_settings import logger
-from fastapi import Request, Response
-import json
+from fastapi import Request
 from .setting import settings
-from .whatzap_service import WhatzapService
+import httpx2 
+from back_end.core.logging.logs_settings import logger
+import json
 
-class WebHook:
-    def __init__(self, whatsapp_service: WhatzapService):
-        self.whatsapp_service = whatsapp_service
+class WhatsappService:
         
     def validar_url(
         self,
@@ -47,8 +44,8 @@ class WebHook:
         )
 
 
-    @staticmethod
-    def _validar_assinatura(
+    def validar_assinatura(
+        self,
         corpo: bytes,
         assinatura_recebida: str | None,
     ) -> None:
@@ -86,18 +83,92 @@ class WebHook:
             )
 
 
-    async def receber_webhook(
+
+        #     if telefone and texto == "oi":
+        #         await self.whatsapp_service.enviar_mensagem_texto(
+        #             telefone=settings.WHATSAPP_TEST_RECIPIENT,
+        #             texto=(
+        #                 "Olá! Sou o assistente da academia."
+        #             ),
+        #         )
+
+        # return Response(status_code=200)
+
+    async def enviar_mensagem_texto(
+        self,
+        texto: str,
+        telefone: str
+        ):
+        url = (
+            f"https://graph.facebook.com/"
+            f"{settings.WHATSAPP_API_VERSION}/"
+            f"{settings.PHONE_NUMBER_ID}/messages"
+        )
+
+        headers = {
+            "Authorization": (
+                "Bearer "
+                + settings.WHATSAPP_ACCESS_TOKEN.get_secret_value()
+            ),
+            "Content-Type": "application/json",
+        }
+
+        payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": telefone,
+            "type": "text",
+            "text": {
+                "preview_url": False,
+                "body": texto,
+            },
+        }
+
+        async with httpx2.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                url=url,
+                headers=headers,
+                json=payload,
+            )
+
+            if response.is_error:
+                try:
+                    erro_meta = response.json().get("error", {})
+
+                    logger.error(
+                        "Meta recusou o envio da mensagem",
+                        extra={
+                            "status_code": response.status_code,
+                            "meta_code": erro_meta.get("code"),
+                            "meta_subcode": erro_meta.get("error_subcode"),
+                            "meta_type": erro_meta.get("type"),
+                            "meta_message": erro_meta.get("message"),
+                        },
+                        exc_info=False,
+                    )
+                except ValueError:
+                    logger.error(
+                        "Meta retornou uma resposta não JSON",
+                        extra={"status_code": response.status_code},
+                        exc_info=False,
+                    )
+
+            response.raise_for_status()
+
+            return response.json()
+
+    async def processar_mensagem(
         self,
         request: Request,
         assinatura: str | None 
-    ):
+    ) -> dict[str, str]:
         # Precisa pegar os bytes originais antes de ler o JSON
         corpo = await request.body()
-        self._validar_assinatura(
+        self.validar_assinatura(
             corpo=corpo,
             assinatura_recebida=assinatura,
         )
-
+        
         try:
             payload = json.loads(corpo)
         except json.JSONDecodeError as erro:
@@ -117,6 +188,7 @@ class WebHook:
                     if mensagem.get("type") != "text":
                         continue
 
+                    # Pega o telefone e o texto da pessoa que ta mandando mensagem pro bot
                     telefone = mensagem.get("from")
                     texto = (
                         mensagem
@@ -126,13 +198,11 @@ class WebHook:
                         .casefold()
                     )
 
-                    if telefone and texto == "oi":
-                        await self.whatsapp_service.enviar_mensagem_texto(
-                            telefone=settings.WHATSAPP_TEST_RECIPIENT,
-                            texto=(
-                                "Olá! Sou o assistente da academia."
-                            ),
-                        )
+                    if telefone:
+                        return {
+                            "texto": texto,
+                            "telefone": telefone,
+                        }
 
-        return Response(status_code=200)
-            
+        # É um evento de status ou outro evento não processado.
+        return None

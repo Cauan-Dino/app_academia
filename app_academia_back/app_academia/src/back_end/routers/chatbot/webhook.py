@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Header, Request
-from back_end.services.domain.chatbot.webhook_service import WebHook
+from back_end.services.domain.chatbot.whatsapp_service import WhatsappService
+from back_end.services.domain.chatbot.chatbot_conversation_service import ChatbotConversationService
 from fastapi import Response
 from fastapi.responses import PlainTextResponse
-from back_end.services.domain.chatbot.dependencies import get_webhook_service
+from back_end.services.domain.chatbot.dependencies import get_whatsapp_service, get_chat_bot_conversation_service
 from fastapi import Query, Depends
 
 router = APIRouter(
@@ -16,7 +17,7 @@ async def testar_webhook(
     mode: str = Query(alias='hub.mode'),
     verify_token: str = Query(alias='hub.verify_token'),
     challenge: str = Query(alias='hub.challenge'),
-    service: WebHook = Depends(get_webhook_service)
+    service: WhatsappService = Depends(get_whatsapp_service)
     ) -> PlainTextResponse:
 
     return service.validar_url(
@@ -32,10 +33,10 @@ async def receber_webhook(
         default=None,
         alias="X-Hub-Signature-256",
     ),
-    service: WebHook = Depends(get_webhook_service),
+    service: ChatbotConversationService = Depends(get_chat_bot_conversation_service),
     ) -> Response:
     
-    return await service.receber_webhook(
+    return await service.main(
         request=request,
         assinatura=assinatura
     )

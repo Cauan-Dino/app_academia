@@ -33,7 +33,7 @@ class AlunoCommandService:
 
         try:
             await self.db.commit()
-
+            
         except IntegrityError:
             await self.db.rollback()
             raise HTTPException(

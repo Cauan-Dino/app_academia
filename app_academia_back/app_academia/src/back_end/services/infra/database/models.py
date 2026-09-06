@@ -178,11 +178,6 @@ class StatusSolicitacao(str, Enum):
     EXPIRADA = "expirada"
 
 
-class OrigemSolicitacao(str, Enum):
-    WHATSAPP = "whatsapp"
-    APLICATIVO = "aplicativo"
-
-
 class SolicitacaoMudanca(Base):
     __tablename__ = "solicitacoes_mudanca"
 
@@ -190,6 +185,10 @@ class SolicitacaoMudanca(Base):
         UniqueConstraint(
             "mensagem_externa_id",
             name="uq_solicitacao_mensagem_externa",
+        ),
+        CheckConstraint(
+            'nova_data_hora_fim' > 'nova_data_hora_inicio',
+            name='ck_solicitacao_fim_apos_inicio'
         ),
         Index(
             "ix_solicitacao_personal_status",
@@ -258,18 +257,6 @@ class SolicitacaoMudanca(Base):
         nullable=False,
         default=StatusSolicitacao.PENDENTE,
         server_default=text("'pendente'"),
-    )
-
-    origem: Mapped[OrigemSolicitacao] = mapped_column(
-        SQLEnum(
-            OrigemSolicitacao,
-            values_callable=lambda enum: [
-                item.value for item in enum
-            ],
-        ),
-        nullable=False,
-        default=OrigemSolicitacao.WHATSAPP,
-        server_default=text("'whatsapp'"),
     )
 
     mensagem_externa_id: Mapped[str | None] = mapped_column(
