@@ -1,15 +1,18 @@
+"""Coordenação do menu e encaminhamento das mensagens para o reagendamento."""
+
 from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import Request, HTTPException
-import json
+from fastapi import Request
 from .whatsapp_service import WhatsappService
 from .chatbot_opcoes_de_escolha_service import ChatBotOptionsService
 from .chatbot_solicitacao_mudanca_aula_service import SolicitacaoReagendamentoAulaService
+from .utils_chatbot_service import UtilsChatbotService
 from .setting import settings
-from redis.asyncio import Redis
-from back_end.core.logging.logs_settings import logger
+from redis.asyncio import Redis, RedisError
 from fastapi import Response
 
 class ChatbotConversationService:
+    """Direciona mensagens recebidas conforme a sessão e a opção escolhida."""
+
     def __init__(
             self, 
             whatzap_service: WhatsappService,
@@ -17,60 +20,31 @@ class ChatbotConversationService:
             redis_client: Redis,
             chatbot_options_service: ChatBotOptionsService,
             chatbot_solicitacao_mudanca_service: SolicitacaoReagendamentoAulaService,
+            utils_chatbot_service: UtilsChatbotService,
         ):
+        """Recebe as dependências de envio, consulta, reagendamento e sessão."""
         self.whatzap_service = whatzap_service
         self.db = db
         self.redis_client = redis_client
         self.chatbot_options_service = chatbot_options_service
         self.chatbot_solicitacao_mudanca_service = chatbot_solicitacao_mudanca_service
-
-
-    async def _salvar_redis(
-        self,
-        telefone: str
-    ):
-        try:
-            # Verifica se ja existe salvo a chave no redis
-            chave_redis = f'chatbot:sessao:{telefone}'
-            redis_cache = await self.redis_client.get(chave_redis)
-            # Salva no redis a chave, indicando q a conversa foi iniciada
-            if not redis_cache:
-                await self.redis_client.set(
-                    chave_redis,
-                    'menu',
-                    ex=30
-                )
-            # Renova o expire na conversa, indicando ja foi iniciada
-            else:
-                await self.redis_client.expire(
-                    chave_redis,
-                    30
-                )
-            try:
-                logger.info(
-                    'Sessão com o chatbot salva no redis'
-                )
-            except Exception:
-                pass
-        except Exception:
-            logger.error(
-                'Erro ao salvar chave de telefone no redis no chatbot.',
-                exc_info=False
-            )
-            raise HTTPException(
-                status_code=500,
-                detail='Serviço indisponível no momento, tente mais tarde'
-            )
+        self.utils_chatbot_service = utils_chatbot_service
 
 
     async def main(
         self,
         request: Request,
         assinatura: str | None
-    ):  
-        """
-        Metodo principal que recebe a mensagem do aluno via processar_mensagem
-        Responsavel por receber a mensagem e tratar a reposta
+    ) -> Response | None:  
+        """Processa uma mensagem recebida pelo webhook do WhatsApp.
+
+        Retorna HTTP 200 quando o evento não contém uma mensagem de texto.
+        Encaminha conversas com reagendamento ativo ao serviço responsável.
+        Para as demais conversas, apresenta o menu, processa a opção escolhida
+        e renova a sessão do chatbot.
+
+        Raises:
+            RedisError: Se ocorrer uma falha ao consultar ou salvar dados no Redis.
         """
         # Pega a mensagem do aluno
         resposta_usuario = await self.whatzap_service.processar_mensagem(
@@ -87,13 +61,24 @@ class ChatbotConversationService:
         # --- Envio de mensagens do bot -----------------------------
 
         # Verifica se o usuario ja escolheu a opcao 2 (inicia uma lista de perguntas pra reagendar a aula)
-        if await self.chatbot_solicitacao_mudanca_service.pega_cache_e_verificar_se_redis_esta_online(telefone_aluno=telefone_aluno):
-            await self.chatbot_solicitacao_mudanca_service.solicitar_mudanca(texto_aluno=texto_aluno, telefone_aluno=telefone_aluno)
+        sessao_reagendamento = (
+            await self.utils_chatbot_service
+            .pega_cache_e_verificar_se_redis_esta_online(
+                telefone_aluno=telefone_aluno,
+            )
+        )
 
-        # Verifica se o telefone esta salvo no redis (verifica se a conversa ja foi iniciada)
-        # Se estiver não manda o menu com escolhas pro usuario escolher se tiver manda 
+        # Usa a sessão que já foi consultada.
+        if sessao_reagendamento is not None:
+            await self.chatbot_solicitacao_mudanca_service.solicitar_mudanca(
+                texto_aluno=texto_aluno,
+                telefone_aluno=telefone_aluno,
+            )
+
+        # verifica se a conversa ja foi iniciada
+        # Se estiver não manda o menu com escolhas pro usuario escolher, se tiver manda 
         elif not await self.redis_client.get(f'chatbot:sessao:{telefone_aluno}'):
-            await self._salvar_redis(
+            await self.utils_chatbot_service._salvar_redis(
                 telefone=telefone_aluno
             )
             texto = self.chatbot_options_service.menu()
@@ -118,7 +103,7 @@ class ChatbotConversationService:
                     telefone=settings.WHATSAPP_TEST_RECIPIENT
                 )
                 # Salva no redis pra indicar que o aluno começou a responder as perguntas pra mudar o horario da aula
-                await self.chatbot_solicitacao_mudanca_service.salvar_situacao_de_agendamento_de_aula_no_redis(
+                await self.utils_chatbot_service.salvar_situacao_de_agendamento_de_aula_no_redis(
                     telefone_aluno=telefone_aluno,
                     sessao= {
                         "aluno_id": "aguardando",
@@ -151,6 +136,6 @@ class ChatbotConversationService:
                 telefone=settings.WHATSAPP_TEST_RECIPIENT
             )
                 
-            await self._salvar_redis(
+            await self.utils_chatbot_service._salvar_redis(
                 telefone=telefone_aluno
             )

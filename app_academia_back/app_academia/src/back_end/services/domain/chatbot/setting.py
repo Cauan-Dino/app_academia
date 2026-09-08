@@ -1,7 +1,11 @@
+"""Configurações e credenciais utilizadas pela integração com o WhatsApp."""
+
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
+    """Carrega variáveis de ambiente e do .env, protegendo a exibição dos segredos."""
+
     model_config = SettingsConfigDict(
         env_file=".env", 
         extra="ignore",

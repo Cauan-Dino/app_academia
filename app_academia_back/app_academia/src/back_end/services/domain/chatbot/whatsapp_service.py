@@ -1,3 +1,5 @@
+"""Validação dos webhooks e comunicação com a API de mensagens da Meta."""
+
 from fastapi import (
     HTTPException,
 )
@@ -12,6 +14,7 @@ from back_end.core.logging.logs_settings import logger
 import json
 
 class WhatsappService:
+    """Valida a origem dos eventos e recebe ou envia mensagens de texto."""
         
     def validar_url(
         self,
@@ -19,8 +22,10 @@ class WhatsappService:
         verify_token: str, 
         challenge: str, 
         ) -> PlainTextResponse:
-        """
-        A meta verifica se a url colocada no callback é valida via esse metodo
+        """Valida a inscrição do webhook e devolve o desafio enviado pela Meta.
+
+        Exige o modo 'subscribe' e o token configurado. Levanta HTTPException
+        com status 403 quando a verificação falha e RuntimeError se falta token.
         """
         WHATSAPP_VERIFY_TOKEN = settings.WHATSAPP_VERIFY_TOKEN.get_secret_value()
 
@@ -49,8 +54,10 @@ class WhatsappService:
         corpo: bytes,
         assinatura_recebida: str | None,
     ) -> None:
-        """
-        Verifica se a entidade que chamou o endpoint colocado no callback da meta pertence a meta de fato
+        """Confere a assinatura HMAC-SHA256 calculada sobre os bytes originais.
+
+        Assinaturas ausentes ou divergentes geram HTTPException com status
+        403. A ausência do segredo do aplicativo gera RuntimeError.
         """
         app_secret = settings.WHATSAPP_APP_SECRET.get_secret_value()
 
@@ -99,6 +106,12 @@ class WhatsappService:
         texto: str,
         telefone: str
         ):
+        """Solicita à Meta o envio de um texto para o telefone informado.
+
+        Retorna o JSON da API, que confirma a aceitação da requisição, não
+        a entrega ao destinatário. Registra recusas HTTP e propaga erros de
+        status, conexão e leitura da resposta ao chamador.
+        """
         url = (
             f"https://graph.facebook.com/"
             f"{settings.WHATSAPP_API_VERSION}/"
@@ -161,7 +174,13 @@ class WhatsappService:
         self,
         request: Request,
         assinatura: str | None 
-    ) -> dict[str, str]:
+    ) -> dict[str, str] | None:
+        """Valida o webhook e extrai a primeira mensagem de texto com remetente.
+
+        Retorna telefone e texto sem espaços externos e com casefold aplicado.
+        Eventos de status ou sem texto retornam None. JSON inválido gera
+        HTTPException com status 400; falhas de assinatura também são propagadas.
+        """
         # Precisa pegar os bytes originais antes de ler o JSON
         corpo = await request.body()
         self.validar_assinatura(
