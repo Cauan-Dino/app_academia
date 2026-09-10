@@ -9,7 +9,6 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from back_end.auth.jwt_token import router as jwt_router
-from back_end.services.infra.database.database import criar_tabela
 from back_end.services.infra.database.database import engine
 from back_end.routers.personal.cadastro_personal import router as cadastro_personal
 from back_end.routers.personal.login_personal import router as login_personal
@@ -23,9 +22,6 @@ from back_end.routers.chatbot.webhook import router as webhook
 
 @asynccontextmanager
 async def lifepan(app: FastAPI):
-    # roda no STARTUP (uma vez, quando o servidor sobe)
-    await criar_tabela()
-
     yield # a aplicação fica "pausada" aqui, atendendo requisições normalmente
 
     # tudo DEPOIS do yield roda no SHUTDOWN (uma vez, quando o servidor desliga)

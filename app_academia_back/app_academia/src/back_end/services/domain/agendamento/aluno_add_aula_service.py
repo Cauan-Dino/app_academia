@@ -123,7 +123,7 @@ class StudentAddClassService:
                 status_code=404,
                 detail="Essa aula não existe."
             )
-
+        
         # Verifica se o aluno existe
         query_aluno = (
             select(Alunos)

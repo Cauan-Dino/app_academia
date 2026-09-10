@@ -12,8 +12,11 @@ from back_end.core.logging.logs_settings import logger
 from .setting import settings
 from .whatsapp_service import WhatsappService
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
+from back_end.schemas.chatbot_schemas import SessaoReagendamento
+
+FUSO_HORARIO_ACADEMIA = timezone(timedelta(hours=-3))
 
 class UtilsChatbotService:
     """Centraliza a formatação de datas e as operações de sessão no Redis."""
@@ -104,7 +107,7 @@ class UtilsChatbotService:
     async def pega_cache_e_verificar_se_redis_esta_online(
         self,
         telefone_aluno: str,
-    ) -> dict | None:
+    ) -> SessaoReagendamento | None:
         """Lê e desserializa a sessão de reagendamento do telefone informado.
 
         Retorna None se a chave estiver ausente ou houver RedisError. Nesse
@@ -156,20 +159,22 @@ class UtilsChatbotService:
     async def validar_e_converter_data_hora(
         self,
         data_hora_aula_original: str,
-        telefone_aluno: str,
+        *,
+        exigir_data_futura: bool = True,
     ) -> datetime | None:
         """Normaliza e converte a data e o horário informados pelo aluno.
 
-        Retorna um datetime quando a entrada é válida. Caso contrário,
-        envia uma orientação de formato, renova a sessão de reagendamento
-        no Redis e retorna None.
+        Interpreta a entrada no horário da academia (UTC−3, Fortaleza).
+        Retorna um datetime sem fuso para manter o contrato com a agenda.
+        Entradas inválidas ou que não sejam futuras recebem uma orientação
+        e retornam None. A renovação da sessão cabe ao chamador.
         """
         try:
             data_hora_formatada = self._limpar_data_e_hora(
                 data_e_hora=data_hora_aula_original,
             )
 
-            return datetime.strptime(
+            aula_agendada = datetime.strptime(
                 data_hora_formatada,
                 "%d/%m/%Y:%H:%M",
             )
@@ -183,6 +188,22 @@ class UtilsChatbotService:
             )
 
             return None
+
+        if exigir_data_futura:
+            if aula_agendada.replace(tzinfo=FUSO_HORARIO_ACADEMIA) <= datetime.now(
+                FUSO_HORARIO_ACADEMIA
+            ):
+                await self.whatsapp_service.enviar_mensagem_texto(
+                    texto=(
+                        "A data e o horário informados já passaram ou a aula já começou.\n"
+                        "Para continuar o reagendamento, informe uma data e um horário "
+                        "futuros, no formato DD/MM/AAAA às HH:MM."
+                    ),
+                    telefone=settings.WHATSAPP_TEST_RECIPIENT,
+                )
+                return None
+
+        return aula_agendada
 
 
     async def obter_sessao_ativa_ou_avisar(

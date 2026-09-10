@@ -35,7 +35,7 @@ class ChatbotConversationService:
         self,
         request: Request,
         assinatura: str | None
-    ) -> Response | None:  
+    ) -> Response:  
         """Processa uma mensagem recebida pelo webhook do WhatsApp.
 
         Retorna HTTP 200 quando o evento não contém uma mensagem de texto.
@@ -121,7 +121,7 @@ class ChatbotConversationService:
                     texto=texto,
                     telefone=settings.WHATSAPP_TEST_RECIPIENT
                 )
-                return 
+                return Response(status_code=200)
 
             elif texto_aluno == 'menu':
                 texto = self.chatbot_options_service.menu()
@@ -139,3 +139,5 @@ class ChatbotConversationService:
             await self.utils_chatbot_service._salvar_redis(
                 telefone=telefone_aluno
             )
+
+        return Response(status_code=200)

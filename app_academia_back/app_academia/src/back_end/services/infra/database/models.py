@@ -31,7 +31,7 @@ class Personal(Base):
     )
     email_verificado: Mapped[bool] = mapped_column(default=False, nullable=False, server_default=text("FALSE")) # False = não verificou email conta não está ativa
     token_version: Mapped[int] = mapped_column(default=0, nullable=False, server_default=text("0")) # Invalida access e refresh tokens
-    
+
 
 class Alunos(Base):
     __tablename__ = 'alunos'
@@ -187,7 +187,7 @@ class SolicitacaoMudanca(Base):
             name="uq_solicitacao_mensagem_externa",
         ),
         CheckConstraint(
-            'nova_data_hora_fim' > 'nova_data_hora_inicio',
+            'nova_data_hora_fim > nova_data_hora_inicio',
             name='ck_solicitacao_fim_apos_inicio'
         ),
         Index(
@@ -265,7 +265,7 @@ class SolicitacaoMudanca(Base):
     )
 
     motivo: Mapped[str | None] = mapped_column(
-        String(500),
+        String(250),
         nullable=True,
     )
 
