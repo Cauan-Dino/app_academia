@@ -11,6 +11,7 @@ from .whatsapp_service import WhatsappService
 from .utils_chatbot_service import UtilsChatbotService
 from .setting import settings
 from back_end.schemas.chatbot_schemas import SessaoReagendamento
+from back_end.services.domain.notificacao.enviar_notificaco_service import NotificacaoService
 
 DIAS_DA_SEMANA = (
     DiaDaSemana.SEGUNDA,
@@ -24,20 +25,20 @@ DIAS_DA_SEMANA = (
 
 class SolicitacaoReagendamentoAulaService:
     """Valida a aula original e conduz as respostas do fluxo de reagendamento."""
-
     def __init__(
         self,
         db: AsyncSession,
         whatsapp_service: WhatsappService,
         redis_client: Redis,
         utils_chatbot_service: UtilsChatbotService,
+        notificacao_service: NotificacaoService
         ):  
         """Recebe o banco, o envio de mensagens e as dependências de sessão."""
         self.db = db
         self.redis_client = redis_client
         self.whatsapp_service = whatsapp_service
         self.utils_chatbot_service = utils_chatbot_service
-
+        self.notificacao_service = notificacao_service
         
     async def solicitar_mudanca(
         self,
@@ -56,7 +57,7 @@ class SolicitacaoReagendamentoAulaService:
 
         if cache is None:
             return
-
+        
         # Sai da conversa de reagendar aula
         if texto_aluno == "0":
             await self._sair_da_conversa_de_mudar_aula(
@@ -104,6 +105,7 @@ class SolicitacaoReagendamentoAulaService:
             select(
                 AulaFixa,
                 Alunos.id.label('aluno_id'),
+                Alunos.nome.label('aluno_nome'),
                 AulaFixa.personal_id.label("personal_id"),
             )
             .join(
@@ -131,10 +133,11 @@ class SolicitacaoReagendamentoAulaService:
             return
 
         # Desempacota os tres valores do único registro encontrado.
-        aula, aluno_id, personal_id = aula[0]
+        aula, aluno_id, aluno_nome, personal_id = aula[0]
         
         sessao: SessaoReagendamento = {
             "personal_id": personal_id,
+            "aluno_nome": aluno_nome,
             "aluno_id": aluno_id,
             "aula_fixa_id": aula.id,
             "data_hora_aula_original": data_hora.isoformat(),
@@ -481,7 +484,7 @@ class SolicitacaoReagendamentoAulaService:
             )
             return
 
-        # Expiracao
+        # Expiracao pra solicitação de mudanca de hora expirar
         expiracao = datetime.now(timezone.utc) + timedelta(days=1)
         
         # Salva no banco que a solicitacao foi enviada
@@ -523,6 +526,7 @@ class SolicitacaoReagendamentoAulaService:
             )
             return
 
+
         # Exclui a sessao salva no redis
         try:
             await self.redis_client.delete(
@@ -542,4 +546,20 @@ class SolicitacaoReagendamentoAulaService:
                 "Até a aprovação, sua aula continua na data e no horário originais."
             ),
             telefone=settings.WHATSAPP_TEST_RECIPIENT,
+        )
+        
+        # Envia notificação pro personal informando que o aluno deseja reagendar a aula
+        data_original = datetime.fromisoformat(sessao['data_hora_aula_original'])
+        novo_inicio = datetime.fromisoformat(sessao['nova_data_hora_inicio'])
+        novo_fim = datetime.fromisoformat(sessao['nova_data_hora_fim'])
+
+        await self.notificacao_service.enviar_notificacao(
+            personal_id=sessao['personal_id'],
+            title=f"Pedido de reagendamento: {sessao['aluno_nome']}",
+            body=(
+                f"Aula de {data_original.strftime('%d/%m às %H:%M')} "
+                f"para {novo_inicio.strftime('%d/%m %H:%M')} "
+                f"– {novo_fim.strftime('%H:%M')}.\n"
+                f"Motivo: {motivo}"
+            ),
         )

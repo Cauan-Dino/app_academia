@@ -30,6 +30,9 @@ services:
     image: mysql:8.0
     container_name: mysql
 
+    ports:
+      - "127.0.0.1:3307:3306"
+
     environment:
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
@@ -71,6 +74,7 @@ services:
     
     volumes:
       - ./app_academia/src/back_end:/app/back_end
+      - /app/back_end/.venv
       - ./logs:/logs
 #      - ./banco_de_dados.db:/app/banco_de_dados.db
 

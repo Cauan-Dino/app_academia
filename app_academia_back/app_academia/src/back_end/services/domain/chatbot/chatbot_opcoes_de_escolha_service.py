@@ -1,8 +1,8 @@
 """Textos do menu, consulta de aulas e encerramento da sessão principal."""
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from back_end.services.infra.database.models import Alunos, AulaFixa, ParticipanteAula
+from sqlalchemy import select, and_
+from back_end.services.infra.database.models import Alunos, AulaFixa, ParticipanteAula, SolicitacaoMudanca, StatusSolicitacao
 from redis.asyncio import Redis
 from back_end.core.logging.logs_settings import logger
 
@@ -38,7 +38,10 @@ class ChatBotOptionsService:
         inscrições em ParticipanteAula. Retorna um aviso se não houver aulas.
         """
         query = (
-            select(AulaFixa)
+            select(
+                AulaFixa,
+                SolicitacaoMudanca,
+                )
             .join(
                 ParticipanteAula,
                 ParticipanteAula.aula_fixa_id == AulaFixa.id,
@@ -47,29 +50,91 @@ class ChatBotOptionsService:
                 Alunos,
                 Alunos.id == ParticipanteAula.aluno_id,
             )
+            .outerjoin(
+                SolicitacaoMudanca,
+                and_(
+                    SolicitacaoMudanca.aluno_id == Alunos.id,
+                    SolicitacaoMudanca.personal_id == AulaFixa.personal_id,
+                    SolicitacaoMudanca.aula_fixa_id == ParticipanteAula.aula_fixa_id,
+                    SolicitacaoMudanca.status.in_(
+                        [
+                            StatusSolicitacao.PENDENTE,
+                            StatusSolicitacao.ACEITA,
+                        ]
+                    )
+                )
+            )
             .where(
                 Alunos.telefone == telefone_aluno,
             )
         )
         resultado = await self.db.execute(query)
-        aulas = resultado.scalars().all()
+        linhas = resultado.all()
 
-        if not aulas:
+        if not linhas:
             return "Nenhuma aula encontrada."
 
-        linhas = ["Suas aulas:"]
 
-        for aula in aulas:
-            inicio = aula.horario_inicio.strftime("%H:%M")
-            fim = aula.horario_fim.strftime("%H:%M")
+        aulas_fixas_por_id: dict[int, str] = {}
+        solicitacoes_por_id: dict[int, str] = {}
 
-            dia = aula.dia_da_semana.value.capitalize()
+        for aula_fixa, solicitacao in linhas:
+            horario_inicio = aula_fixa.horario_inicio.strftime("%H:%M")
+            horario_fim = aula_fixa.horario_fim.strftime("%H:%M")
+            dia = aula_fixa.dia_da_semana.value.capitalize()
 
-            linhas.append(
-                f"• {dia}: {inicio} às {fim}"
+            aulas_fixas_por_id[aula_fixa.id] = (
+                f"• {dia}: {horario_inicio} às {horario_fim}"
             )
 
-        return "\n".join(linhas)
+            if solicitacao is not None:
+                horario_original = (
+                    solicitacao.data_hora_aula_original
+                    .strftime("%d/%m/%Y às %H:%M")
+                )
+
+                nova_data = (
+                    solicitacao.nova_data_hora_inicio
+                    .strftime("%d/%m/%Y")
+                )
+                novo_inicio = (
+                    solicitacao.nova_data_hora_inicio
+                    .strftime("%H:%M")
+                )
+                novo_fim = (
+                    solicitacao.nova_data_hora_fim
+                    .strftime("%H:%M")
+                )
+
+                status = solicitacao.status.value.capitalize()
+
+                solicitacoes_por_id[solicitacao.id] = (
+                    f"• {horario_original} → "
+                    f"{nova_data}, das {novo_inicio} às {novo_fim} "
+                    f"({status})"
+                )
+
+        texto_aulas_fixas = "\n".join(
+            aulas_fixas_por_id.values()
+        )
+
+        texto_reagendamentos = "\n".join(
+            solicitacoes_por_id.values()
+        )
+        partes = [
+            "📅 *Suas aulas fixas:*",
+            texto_aulas_fixas,
+        ]
+
+        if solicitacoes_por_id:
+            partes.extend(
+                [
+                    "🔄 *Solicitações de reagendamento:*",
+                    texto_reagendamentos,
+                ]
+            )
+
+        return "\n\n".join(partes)
 
         
 

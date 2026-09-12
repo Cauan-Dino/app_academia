@@ -1,0 +1,30 @@
+# Ambiente virtual e cache Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Segredos e config local
+.env
+.env.*
+
+# Git
+.git/
+.gitignore
+
+# Logs e dados locais
+logs/
+*.log
+*.db
+
+# Pastas de teste/experimentação que você já ignora no git
+z/
+
+# Editor / SO
+.vscode/
+.idea/
+.DS_Store
+
+# Docker
+docker-compose.yml
+.dockerignore

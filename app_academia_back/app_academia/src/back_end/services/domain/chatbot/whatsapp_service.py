@@ -88,18 +88,7 @@ class WhatsappService:
                 status_code=403,
                 detail="Assinatura inválida.",
             )
-
-
-
-        #     if telefone and texto == "oi":
-        #         await self.whatsapp_service.enviar_mensagem_texto(
-        #             telefone=settings.WHATSAPP_TEST_RECIPIENT,
-        #             texto=(
-        #                 "Olá! Sou o assistente da academia."
-        #             ),
-        #         )
-
-        # return Response(status_code=200)
+        
 
     async def enviar_mensagem_texto(
         self,

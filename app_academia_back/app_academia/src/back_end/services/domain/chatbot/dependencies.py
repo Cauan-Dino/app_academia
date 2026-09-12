@@ -10,6 +10,7 @@ from back_end.services.infra.redis_service.redis_config import get_redis
 from .chatbot_opcoes_de_escolha_service import ChatBotOptionsService
 from .chatbot_solicitacao_mudanca_aula_service import SolicitacaoReagendamentoAulaService
 from .utils_chatbot_service import UtilsChatbotService
+from back_end.services.domain.notificacao.enviar_notificaco_service import NotificacaoService
 
 def get_whatsapp_service() -> WhatsappService:
     """Cria o serviço que valida webhooks e envia mensagens pela API da Meta."""
@@ -43,5 +44,6 @@ def get_chat_bot_conversation_service(
             whatsapp_service=whatsapp_service, 
             redis_client=redis_client,
             utils_chatbot_service=utils_chatbot_service,
+            notificacao_service=NotificacaoService(db=db),
         )
     )

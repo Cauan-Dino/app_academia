@@ -31,7 +31,7 @@ class Personal(Base):
     )
     email_verificado: Mapped[bool] = mapped_column(default=False, nullable=False, server_default=text("FALSE")) # False = não verificou email conta não está ativa
     token_version: Mapped[int] = mapped_column(default=0, nullable=False, server_default=text("0")) # Invalida access e refresh tokens
-
+    push_token: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 class Alunos(Base):
     __tablename__ = 'alunos'
