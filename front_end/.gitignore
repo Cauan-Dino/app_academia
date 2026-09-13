@@ -4,3 +4,5 @@ node_modules/
 dist/
 dist-ios/
 npm-debug.log*
+google-services.json
+*firebase-adminsdk*.json

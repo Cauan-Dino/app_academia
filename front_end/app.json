@@ -14,11 +14,19 @@
       "package": "com.appacademia.treinopro",
       "adaptiveIcon": {
         "backgroundColor": "#121815"
-      }
+      },
+      "googleServicesFile": "./google-services.json"
     },
     "plugins": [
       "expo-secure-store",
-      "expo-status-bar"
-    ]
+      "expo-status-bar",
+      "expo-notifications"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "3ea112a0-c9a1-4579-ab03-25ebe7f6d0df"
+      }
+    },
+    "owner": "cauan_penha"
   }
 }

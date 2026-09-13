@@ -1,23 +1,28 @@
 # TreinoPro Mobile
 
-Aplicativo React Native/Expo em JavaScript para Android e iOS. O front consome somente os endpoints atualmente existentes no backend.
+Aplicativo Expo/React Native integrado à API FastAPI do projeto.
 
 ## Executar
 
-1. Copie `.env.example` para `.env` e informe o IP local da máquina que executa a API.
-2. Execute `npm install`.
-3. Execute `npm start` e abra pelo Expo Go ou por um emulador.
+```bash
+npm install
+npm run start
+```
 
-No Android Emulator, normalmente a API local é acessada por `http://10.0.2.2:8000`. Em um aparelho físico, use o IP da máquina na mesma rede, como `http://192.168.0.10:8000`.
+Para apontar para outro endereço da API:
+
+```bash
+EXPO_PUBLIC_API_URL=http://SEU_IP:8000 npm run start
+```
 
 ## Funcionalidades ligadas à API
 
-- Cadastro e reenvio da confirmação de e-mail
-- Login e renovação automática dos tokens
-- Recuperação e redefinição de senha por link
-- Alteração de nome
-- Solicitação de alteração de senha estando logado
-- Solicitação e reenvio da exclusão de conta
-- Logout local
+- cadastro, login e renovação automática do token;
+- consulta, alteração e exclusão da conta;
+- consulta, pesquisa, cadastro, alteração e exclusão de alunos;
+- visualização das aulas de cada aluno;
+- agenda semanal com cadastro, alteração e exclusão de aulas fixas;
+- consulta da ocupação da aula;
+- inclusão e remoção de alunos nas aulas.
 
-Alunos, horários, reagendamentos e notificações não aparecem porque ainda não existem rotas correspondentes no backend.
+Reagendamentos e notificações ainda não possuem endpoints próprios no backend atual.

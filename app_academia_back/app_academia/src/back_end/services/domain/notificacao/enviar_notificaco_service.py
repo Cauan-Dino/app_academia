@@ -2,7 +2,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from back_end.core.logging.logs_settings import logger
 from back_end.services.infra.database.models import Personal
-from fastapi import HTTPException
 import httpx2
 
 class NotificacaoService:

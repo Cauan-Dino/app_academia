@@ -82,7 +82,7 @@ class AlunoCommandService:
             )
 
 
-        # Pega apenas os campos que foram enviados no payload
+        # Pega apenas os campos que foram enviados no payload, excluindo os que não foram enviados
         dados_atualizacao = body.model_dump(exclude_unset=True)
         if not dados_atualizacao:
             raise HTTPException(

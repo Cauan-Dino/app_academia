@@ -162,6 +162,12 @@ export async function request(path, options = {}, authenticated = false) {
   }
 }
 
+function queryString(params = {}) {
+  const entries = Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '');
+  if (!entries.length) return '';
+  return `?${entries.map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`).join('&')}`;
+}
+
 export const api = {
   login: (email, senha) => request('/login', { method: 'POST', body: JSON.stringify({ email, senha }) }),
   register: (data) => request('/cadastro', { method: 'POST', body: JSON.stringify(data) }),
@@ -172,4 +178,23 @@ export const api = {
   requestPasswordChange: (email) => request('/senha/enviar-email-alteracao', { method: 'POST', body: JSON.stringify({ email }) }, true),
   deleteAccount: (senha, confirmar_senha) => request('/deletar-conta', { method: 'POST', body: JSON.stringify({ senha, confirmar_senha }) }, true),
   resendDeleteEmail: () => request('/deletar-conta/reenviar-email', { method: 'POST' }, true),
+  updatePushToken: (push_token) => request('/personal/push-token', { method: 'PATCH', body: JSON.stringify({ push_token }) }, true),
+
+  listStudents: (nome_aluno) => request(`/alunos${queryString({ nome_aluno })}`, {}, true),
+  getStudent: (alunoId) => request(`/alunos/${alunoId}`, {}, true),
+  createStudent: (data) => request('/alunos', { method: 'POST', body: JSON.stringify(data) }, true),
+  updateStudent: (alunoId, data) => request(`/alunos/${alunoId}`, { method: 'PATCH', body: JSON.stringify(data) }, true),
+  deleteStudent: (alunoId) => request(`/alunos/${alunoId}`, { method: 'DELETE' }, true),
+  getStudentClasses: (alunoId) => request(`/buscar/aluno-nas-aulas${queryString({ aluno_id: alunoId })}`, {}, true),
+
+  listClasses: (filters = {}) => request(`/buscar-aulas${queryString(filters)}`, {}, true),
+  createClass: (data) => request('/cadastrar-aula', { method: 'POST', body: JSON.stringify(data) }, true),
+  updateClass: (aulaId, data) => request(`/alterar-aula/${aulaId}`, { method: 'PATCH', body: JSON.stringify(data) }, true),
+  deleteClass: (aulaId) => request(`/deletar-aula/${aulaId}`, { method: 'DELETE' }, true),
+  getClassStudents: (aulaId) => request(`/buscar/alunos-na-aula${queryString({ aula_id: aulaId })}`, {}, true),
+  addStudentToClass: (alunoId, aulaId) => request('/cadastrar/aluno-na-aula', {
+    method: 'POST',
+    body: JSON.stringify({ aluno_id: alunoId, aula_fixa_id: aulaId }),
+  }, true),
+  removeStudentFromClass: (alunoId, aulaId) => request(`/deletar/aluno-na-aula${queryString({ aluno_id: alunoId, aula_id: aulaId })}`, { method: 'DELETE' }, true),
 };
