@@ -134,8 +134,38 @@ services:
       elasticsearch:
         condition: service_healthy
 
+  # Executa as tarefas da fila. Sem ele, nada é processado.
+  taskiq_worker:
+    build: .
+    container_name: taskiq_worker
+    env_file:
+      - .env
+
+    environment:
+      LOG_FILE_PATH: /logs/taskiq_worker.log
+
+    volumes:
+      - ./app_academia/src/back_end:/app/back_end
+      - /app/back_end/.venv
+      - ./logs:/logs
+
+    depends_on:
+      redis:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+
+    command: >
+      taskiq worker
+      back_end.services.infra.filas.taskiq.taskiq_app:broker
+      back_end.services.infra.filas.tasks.email_task
+
+    restart: unless-stopped
+
+  # Republica na fila as tarefas agendadas (novas tentativas com atraso).
   taskiq_scheduler:
     build: .
+    container_name: taskiq_scheduler
     env_file:
       - .env
 
@@ -144,6 +174,7 @@ services:
 
     volumes:
       - ./app_academia/src/back_end:/app/back_end
+      - /app/back_end/.venv
       - ./logs:/logs
 
     depends_on:

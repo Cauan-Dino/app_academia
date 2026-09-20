@@ -5,8 +5,7 @@ description = "Backend do ecossistema App Academia"
 authors = [
     {name = "Cauan Penha"}
 ]
-readme = "README.md"
-requires-python = ">=3.13,<4.0" 
+requires-python = ">=3.13,<4.0"
 dependencies = [
     "fastapi[standard] (>=0.135.2,<0.136.0)",
     "uvicorn (>=0.42.0,<0.43.0)",

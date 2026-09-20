@@ -19,7 +19,6 @@ class Settings(BaseSettings):
 
     PHONE_NUMBER_ID: str
     WHATSAPP_API_VERSION: str = "v26.0"
-    WHATSAPP_TEST_RECIPIENT: str
 
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379

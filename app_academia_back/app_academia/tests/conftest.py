@@ -19,7 +19,6 @@ os.environ.update({
     "WHATSAPP_APP_SECRET": "test",
     "WHATSAPP_ACCESS_TOKEN": "test",
     "PHONE_NUMBER_ID": "test",
-    "WHATSAPP_TEST_RECIPIENT": "5500000000000",
     "REDIS_PASSWORD": "test",
     "LOG_FILE_PATH": str(Path(__file__).resolve().parents[2] / "logs" / "testes_notificacoes.log"),
 })
