@@ -1,1 +1,0 @@
-colocar a funcao que envia o email na fila do TaskIQ

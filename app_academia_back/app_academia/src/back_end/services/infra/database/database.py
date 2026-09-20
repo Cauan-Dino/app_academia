@@ -19,11 +19,6 @@ SessionLocal = async_sessionmaker(autocommit=False, autoflush=False, bind=engine
 class Base(DeclarativeBase):
     pass
 
-async def criar_tabela():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
 async def sessao_db():
     async with SessionLocal() as db:
-        yield db 
-
+        yield db

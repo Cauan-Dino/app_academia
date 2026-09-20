@@ -1,0 +1,16 @@
+# Backend nao e necessario para o build do front end, e evita bugs
+# conhecidos do EAS CLI no Windows ao varrer pastas como .pytest_cache
+app_academia_back/
+
+# Equivalentes ao front_end/.gitignore
+node_modules/
+.expo/
+.env
+.env.*
+dist/
+dist-ios/
+dist-web/
+npm-debug.log*
+
+# Git
+.git/

@@ -31,7 +31,7 @@ class Personal(Base):
     )
     email_verificado: Mapped[bool] = mapped_column(default=False, nullable=False, server_default=text("FALSE")) # False = não verificou email conta não está ativa
     token_version: Mapped[int] = mapped_column(default=0, nullable=False, server_default=text("0")) # Invalida access e refresh tokens
-    
+    push_token: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 class Alunos(Base):
     __tablename__ = 'alunos'
@@ -170,36 +170,170 @@ class ParticipanteAula(Base):
 
 
 
+class StatusSolicitacao(str, Enum):
+    PENDENTE = "pendente"
+    ACEITA = "aceita"
+    RECUSADA = "recusada"
+    CANCELADA = "cancelada"
+    EXPIRADA = "expirada"
+
+
 class SolicitacaoMudanca(Base):
     __tablename__ = "solicitacoes_mudanca"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    agendamento_fixo_id: Mapped[int] = mapped_column(ForeignKey("agendamentos_fixos.id"))
-    data_original: Mapped[str] = mapped_column(Date, nullable=False)
-    data_nova: Mapped[str] = mapped_column(Date, nullable=False)
-    horario_inicio_novo: Mapped[str] = mapped_column(Time, nullable=False)
-    horario_fim_novo: Mapped[str] = mapped_column(Time, nullable=False)
-    status: Mapped[str] = mapped_column(
-        Enum('pendente', 'aprovado', 'recusado', name="status_mudanca"), 
-        default='pendente'
+    __table_args__ = (
+        UniqueConstraint(
+            "mensagem_externa_id",
+            name="uq_solicitacao_mensagem_externa",
+        ),
+        CheckConstraint(
+            'nova_data_hora_fim > nova_data_hora_inicio',
+            name='ck_solicitacao_fim_apos_inicio'
+        ),
+        Index(
+            "ix_solicitacao_personal_status",
+            "personal_id",
+            "status",
+        ),
+        Index(
+            "ix_solicitacao_expira_em",
+            "expira_em",
+        ),
     )
-    criado_em: Mapped[datetime] = mapped_column(
-        TIMESTAMP, server_default=text('CURRENT_TIMESTAMP')
-    )
-
-    
-
-class EnvioSMS(Base):
-    __tablename__ = 'envio_de_sms'
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    usuario_id: Mapped[int] = mapped_column(ForeignKey("personal.id")) # Vínculo pelo ID
-    telefone: Mapped[str] = mapped_column(String(15), index=True)
-    codigo_sms: Mapped[int] = mapped_column()
-    tentativas_erradas: Mapped[int] = mapped_column(default=0)
-    data_criacao: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'))
-    bloqueado_ate: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=True) # Bloqueia o usuario de pedir novos sms ate passar 1 hora
-    codigo_sms_validado: Mapped[bool] = mapped_column(default=False)
+
+    personal_id: Mapped[int] = mapped_column(
+        ForeignKey(
+            "personal.id",
+            ondelete="CASCADE",
+            name="fk_solicitacao_personal",
+        ),
+        nullable=False,
+    )
+
+    aluno_id: Mapped[int] = mapped_column(
+        ForeignKey(
+            "alunos.id",
+            ondelete="CASCADE",
+            name="fk_solicitacao_aluno",
+        ),
+        nullable=False,
+    )
+
+    aula_fixa_id: Mapped[int] = mapped_column(
+        ForeignKey(
+            "agendamentos_fixos.id",
+            ondelete="CASCADE",
+            name="fk_solicitacao_aula_fixa",
+        ),
+        nullable=False,
+    )
+
+    # Ocorrência exata da aula que o aluno deseja mudar
+    data_hora_aula_original: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+    )
+
+    # Novo horário solicitado
+    nova_data_hora_inicio: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+    )
+
+    nova_data_hora_fim: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+    )
+
+    status: Mapped[StatusSolicitacao] = mapped_column(
+        SQLEnum(
+            StatusSolicitacao,
+            values_callable=lambda enum: [
+                item.value for item in enum
+            ],
+        ),
+        nullable=False,
+        default=StatusSolicitacao.PENDENTE,
+        server_default=text("'pendente'"),
+    )
+
+    mensagem_externa_id: Mapped[str | None] = mapped_column(
+        String(150),
+        nullable=True,
+    )
+
+    motivo: Mapped[str | None] = mapped_column(
+        String(250),
+        nullable=True,
+    )
+
+    criada_em: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        server_default=text("CURRENT_TIMESTAMP"),
+    )
+
+    respondida_em: Mapped[datetime | None] = mapped_column(
+        DateTime,
+        nullable=True,
+    )
+
+    whatsapp_notificada_em: Mapped[datetime | None] = mapped_column(
+        DateTime,
+        nullable=True,
+    )
+
+    expira_em: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+    )
+
+    personal_relationship: Mapped["Personal"] = relationship()
+    aluno_relationship: Mapped["Alunos"] = relationship()
+    aula_relationship: Mapped["AulaFixa"] = relationship()
 
 
+class Notificacao(Base):
+    __tablename__ = "notificacoes"
 
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    personal_id: Mapped[int] = mapped_column(
+        ForeignKey("personal.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    solicitacao_id: Mapped[int | None] = mapped_column(
+        ForeignKey("solicitacoes_mudanca.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+
+    titulo: Mapped[str] = mapped_column(String(150), nullable=False)
+    mensagem: Mapped[str] = mapped_column(String(500), nullable=False)
+
+    lida: Mapped[bool] = mapped_column(
+        nullable=False,
+        default=False,
+        server_default=text("FALSE"),
+    )
+
+    criada_em: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        server_default=text("CURRENT_TIMESTAMP"),
+    )
+
+# class EnvioSMS(Base):
+#     __tablename__ = 'envio_de_sms'
+
+#     id: Mapped[int] = mapped_column(primary_key=True)
+#     usuario_id: Mapped[int] = mapped_column(ForeignKey("personal.id")) # Vínculo pelo ID
+#     telefone: Mapped[str] = mapped_column(String(15), index=True)
+#     codigo_sms: Mapped[int] = mapped_column()
+#     tentativas_erradas: Mapped[int] = mapped_column(default=0)
+#     data_criacao: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'))
+#     bloqueado_ate: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=True) # Bloqueia o usuario de pedir novos sms ate passar 1 hora
+#     codigo_sms_validado: Mapped[bool] = mapped_column(default=False)

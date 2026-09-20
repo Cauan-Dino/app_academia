@@ -1,0 +1,20 @@
+Configuração de migrations do banco de dados.
+
+Executando localmente a partir de app_academia/src/back_end:
+
+Crie uma migration após alterar os models:
+    poetry run alembic revision --autogenerate -m "descricao da alteracao"
+
+Revise o arquivo gerado e aplique-o:
+    poetry run alembic upgrade head
+
+Desfaça a última migration:
+    poetry run alembic downgrade -1
+
+Quando SQLALCHEMY_DATABASE_URL usa o hostname "mysql" do Docker Compose,
+execute a partir da raiz do repositório:
+    docker compose exec app poetry run alembic -c back_end/alembic.ini revision --autogenerate -m "descricao da alteracao"
+    docker compose exec app poetry run alembic -c back_end/alembic.ini upgrade head
+
+O autogenerate deve sempre ser revisado antes do upgrade. Renomear uma coluna,
+por exemplo, pode ser interpretado como remoção da antiga e criação de uma nova.

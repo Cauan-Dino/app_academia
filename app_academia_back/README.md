@@ -1,95 +1,92 @@
-# Explicações de cada arquivo
+# TreinoPro — Back-end
 
----
+API FastAPI do TreinoPro: contas de personal trainer, alunos, agenda de aulas, chatbot de WhatsApp e notificações push.
 
-> ## routers/cadastro_usuario.py
+Para entender o projeto como um todo, veja o [README principal](../README.md).
 
-### **/cadastro**
-- Responsável por cadastrar o usuário
-    - Verifica se o usuário possui uma conta inativa
-        - Se sim, substitui as informações dessa conta pelas informações que o usuário está inserindo agora
-        - Se não, cadastra um novo usuário completamente do zero
-    - Gera um refresh e um access token quando o usuário se cadastrar
+## Executar
 
-### **/login**
-- Responsável por logar o usuário caso a conta exista
-- Gera um access e um refresh token
+```bash
+cp .env.example .env     # preencha as credenciais
+docker compose up -d
+docker compose exec -w /app/back_end app poetry run alembic upgrade head
+```
 
----
+- API: `http://localhost:8000`
+- Documentação interativa: `http://localhost:8000/docs`
+- Kibana (logs): `http://localhost:5601`
 
-> ## auth_token.py
+> O `-w /app/back_end` é necessário porque o container inicia em `/app`, mas o `alembic.ini` fica em `/app/back_end/`. Sem isso, o Alembic falha com `No 'script_location' key found in configuration`.
 
-### **criar_refresh_token/criar_access_token**
-- Cria um refresh token e um access token com um tempo definido no .env
+## Testes
 
-### **verificar_refresh_token/verificar_access_token**
-- Verifica se o access/refresh token ainda esta válido e se é do tipo certo
+Os testes são isolados — usam SQLite em memória e não tocam em nenhum serviço externo:
 
-### **/refresh**
-- Gera outro access token com base no access token
+```bash
+cd app_academia
+pytest tests
+```
 
----
-> ## criptografia_de_senhas.py
+## Estrutura
 
-### **critografar_senha**
-- criptografa a senha
+```
+app_academia/src/back_end/
+  main.py               monta a aplicação, CORS e ciclo de vida
+  routers/              endpoints HTTP, agrupados por assunto
+  services/domain/      regras de negócio (personal, aluno, agendamento, chatbot, notificação)
+  services/infra/       banco, cache, e-mail, fila, configuração e criptografia
+  auth/                 JWT e tokens assinados dos links de e-mail
+  core/                 logging e tratamento global de erros
+  schemas/              modelos Pydantic de entrada e saída
+  alembic/versions/     migrations (histórico do schema — nunca ignore no git)
 
-### **bcrypt_context**
-- Instância que permite verificar se a senha salva no banco de dados bate com a senha enviado no json
+app_academia/tests/     testes automatizados
+```
 
---- 
-> ## database.py
+A descrição de cada serviço está em [docs/servicos.md](../docs/servicos.md).
 
-### **Explicação do arquivo**
-- Cria a conexão com o banco de dados no mysql
+## Containers
 
----
-> ## main.py
+| Serviço | Função |
+|---|---|
+| `app` | API FastAPI |
+| `mysql` | Banco de dados |
+| `redis` | Cache, sessões do chatbot, rate limit e broker da fila |
+| `taskiq_worker` | Executa as tarefas da fila (envio de e-mails) |
+| `taskiq_scheduler` | Reenfileira as tarefas com atraso (novas tentativas) |
+| `elasticsearch` / `logstash` / `kibana` | Coleta e consulta dos logs |
 
-### **Explicação do arquivo**
-- Responsável por juntar todas as rotas do `routers`
-- Responsável por iniciar todas as variaveis de ambiente
+**Worker e scheduler são obrigatórios e têm papéis diferentes.** O worker executa as tarefas; o scheduler apenas as reenvia à fila no momento certo. Sem o worker rodando, os e-mails ficam enfileirados e nunca são enviados.
 
----
-> ## models.py
+## Comandos úteis
 
-### **Explicação do arquivo**
-- Responsável por criar as tabelas do banco de dados
+```bash
+# Criar uma migration a partir das mudanças nos models
+docker compose exec -w /app/back_end app poetry run alembic revision --autogenerate -m "descricao"
 
----
+# Ver em qual revisão o banco está
+docker compose exec -w /app/back_end app poetry run alembic current
 
-> ## scheme.py
+# Acompanhar os logs da API
+docker compose logs -f app
 
-### **Explicação do arquivo**
-- Responsável por criar os schemes que serão usados no json
+# Inspecionar o banco
+docker compose exec mysql mysql -u app_academia_user -p app_academia
+```
 
----
+> O worker do TaskIQ **não recarrega sozinho** quando o código muda (diferente da API em modo desenvolvimento). Depois de editar qualquer arquivo em `services/infra/filas/`, rode `docker compose restart taskiq_worker`.
 
-> ## verifica_se_numero_existe.py
+## Variáveis de ambiente
 
-### **gerar_codigo_pro_sms**
-- Gera um código aleátorio de 6 dígitos
+Todas estão listadas e comentadas no [.env.example](.env.example). Os pontos de atenção:
 
-### **validar_codigo_usuario**
-- Válida se o código SMS que o usuário está inserindo ainda esta válido (se não foi expirado)
-- Verifica se o código SMS que o usuário está inserindo bate com o que está salvo no banco de dados
-- Verifica se o usuário já errou muitas vezes o codigo
-    - Se sim, bloqueia ele de pedir novos códigos e de tentar
-    - Se não, ainda consegue tentar e pedir novos códigos
-- Cada vez que o código erra é adicionando mais um no atributo tentativas_erradas se chegar a 3 tentativas falhas em uma linha ou 5 no total proibe do usuário pedir/tentar códigos SMS
+- `SECRET_KEY` e `PEPPER` — gere valores próprios para produção; nunca reaproveite os de desenvolvimento.
+- `SQLALCHEMY_DATABASE_URL` — dentro do Docker o host é `mysql`; fora, use `127.0.0.1:3307`.
+- `CORS_ORIGINS` — deixe vazio se só o app mobile consome a API; preencha apenas se houver um front web.
+- `WHATSAPP_APP_SECRET` — usado para validar a assinatura dos webhooks recebidos da Meta.
 
-### **contar_solicitacoes_na_ultima_hora**
-- Conta quantas solicitações foram enviadas na última hora, se for mais de 10 bloqueia o usuário de pedir novas solicatações na próxima hora
+## Documentação
 
-### **contar_erros_na_ultima_hora**
-- Contas quantas vezes o usuário inseriu o código errado, se for mais de 5 vezes no total na última hora bloqueia ele de pedir novos códigos na próxima hora
-
-### **pode_solicitar_novo_sms**
-- Impede o usuário de solicitar outro SMS no mesmo minuto
-
-### **/enviar-sms**
-- Verifica se o usuário ja passou mais de 10 solicitações de envio na última hora
-    - Se sim, bloqueia de pedir por uma hora
-- Verifica se o usuário errou mais de 5 vezes o código na última hora
-    - Se sim, bloqueia ele de pedir por uma hora
-- Envia o SMS
+- [docs/arquitetura.md](../docs/arquitetura.md) — containers, fluxos e modelo de dados.
+- [docs/servicos.md](../docs/servicos.md) — o que cada serviço faz.
+- [docs/api.md](../docs/api.md) — referência dos endpoints.

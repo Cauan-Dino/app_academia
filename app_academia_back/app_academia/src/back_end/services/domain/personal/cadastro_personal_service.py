@@ -52,58 +52,29 @@ class PersonalCadastroService:
         telefone_do_usuario = resultado_telefone.scalar_one_or_none()
         email_do_usuario = resultado_email.scalar_one_or_none()
 
-        # Verifica se o telefone ja existe
-        if telefone_do_usuario and telefone_do_usuario.usuario_ativo:
+        # Impede o cadastro se o telefone ou e-mail já pertencem a qualquer conta,
+        # ativa ou inativa — contas excluídas não são reaproveitadas silenciosamente.
+        if telefone_do_usuario is not None or email_do_usuario is not None:
             raise HTTPException(
                 status_code=409,
-                detail="Esse telefone já está cadastrado"
-            )
-
-        # Verifica se o email ja existe
-        if email_do_usuario and email_do_usuario.usuario_ativo:
-            raise HTTPException(
-                status_code=409,
-                detail="Esse e-mail já está cadastrado"
+                detail=(
+                    "Não foi possível cadastrar com esses dados. "
+                    "Se você já possui uma conta, utilize a recuperação de acesso."
+                ),
             )
 
         self.validar_senha(body.senha, body.confirmar_senha)
         senha_criptografada = criptografar_senha(body.senha)
 
-        # Evita com que os dois existam, mas sejam pessoas diferentes, ex:
-        # telefone → usuário inativo ID 10
-        # e-mail   → usuário inativo ID 25
-        if telefone_do_usuario and email_do_usuario and telefone_do_usuario.id != email_do_usuario.id:
-            raise HTTPException(
-                status_code=409,
-                detail="Telefone ou e-mail já estão vinculados a outra conta.",
-            )
-        # Pega o objeto da Tabela Personal via ou telefone ou email
-        usuario = telefone_do_usuario or email_do_usuario 
-
-        # Se o usuario EXISTIR e não estiver ATIVO as informações dele são Reinscritas 
-        if usuario and not usuario.usuario_ativo:
-            # Converte o body para dict (com a senha já tratada)
-            dados_atualizacao = body.model_dump(exclude={"confirmar_senha"})
-            dados_atualizacao["senha"] = senha_criptografada
-
-            # Atualiza todos os atributos dinamicamente no modelo do banco
-            for campo, valor in dados_atualizacao.items():
-                setattr(usuario, campo, valor)
-
-            usuario.usuario_ativo = False 
-            usuario.email_verificado = False # Usuário precisa confirmar a conta no Email
- 
-        # Se o personal não possuir nenhum cadastro, Ele será CADASTRADO
-        else:
-            usuario = Personal(
-                nome=body.nome,
-                telefone=body.telefone,
-                email=body.email,
-                senha=senha_criptografada,
-                usuario_ativo=False, # Usuário precisa confirmar a conta no Email
-                email_verificado=False
-            )
-            self.db.add(usuario)
+        usuario = Personal(
+            nome=body.nome,
+            telefone=body.telefone,
+            email=body.email,
+            senha=senha_criptografada,
+            usuario_ativo=False, # Usuário precisa confirmar a conta no Email
+            email_verificado=False
+        )
+        self.db.add(usuario)
 
         try:
             await self.db.commit()
@@ -112,11 +83,10 @@ class PersonalCadastroService:
             raise HTTPException(status_code=400, detail='Ocorreu um erro ao se cadastrar!')
         
         await self.db.refresh(usuario)
-
         # --- Envia Email de Confirmação ------------------
         token = gerar_token_confirmacao_email(body.email)
         try:
-            await self.email_service.enviar_email_confirmacao(token=token, email=body.email, usuario_id=usuario.id)
+            await self.email_service.enviar_email_confirmacao(token=token, email=body.email, usuario_id=usuario.id) 
         # Trata o erro de Cooldown de envio
         except HTTPException:
             raise

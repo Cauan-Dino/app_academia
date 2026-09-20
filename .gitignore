@@ -5,6 +5,9 @@
 .env.*
 env_db_test.env
 *.env
+# Modelo sem segredos, versionado de propósito
+!.env.example
+!**/.env.example
 /app_academia_back/banco_de_dados.db
 informacoes_app.md
 
@@ -57,6 +60,5 @@ Thumbs.db
 *.swp
 
 app_academia_back/logs/
-app_academia_back/app_academia/src/back_end/README.md
 app_academia_back/filtro_e_for_update_como_usar.ipynb
 z

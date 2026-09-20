@@ -30,6 +30,9 @@ services:
     image: mysql:8.0
     container_name: mysql
 
+    ports:
+      - "127.0.0.1:3307:3306"
+
     environment:
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
@@ -55,7 +58,7 @@ services:
     container_name: main_app
 
     ports:
-      - "127.0.0.1:8000:8000"
+      - "8000:8000"
     
     depends_on:
       redis:
@@ -71,10 +74,11 @@ services:
     
     volumes:
       - ./app_academia/src/back_end:/app/back_end
+      - /app/back_end/.venv
       - ./logs:/logs
 #      - ./banco_de_dados.db:/app/banco_de_dados.db
 
-    command: uvicorn back_end.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn back_end.main:app --host 0.0.0.0 --port 8000
     restart: unless-stopped 
   
   elasticsearch:
@@ -129,6 +133,62 @@ services:
     depends_on:
       elasticsearch:
         condition: service_healthy
+
+  # Executa as tarefas da fila. Sem ele, nada é processado.
+  taskiq_worker:
+    build: .
+    container_name: taskiq_worker
+    env_file:
+      - .env
+
+    environment:
+      LOG_FILE_PATH: /logs/taskiq_worker.log
+
+    volumes:
+      - ./app_academia/src/back_end:/app/back_end
+      - /app/back_end/.venv
+      - ./logs:/logs
+
+    depends_on:
+      redis:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+
+    command: >
+      taskiq worker
+      back_end.services.infra.filas.taskiq.taskiq_app:broker
+      back_end.services.infra.filas.tasks.email_task
+
+    restart: unless-stopped
+
+  # Republica na fila as tarefas agendadas (novas tentativas com atraso).
+  taskiq_scheduler:
+    build: .
+    container_name: taskiq_scheduler
+    env_file:
+      - .env
+
+    environment:
+      LOG_FILE_PATH: /logs/taskiq_scheduler.log
+
+    volumes:
+      - ./app_academia/src/back_end:/app/back_end
+      - /app/back_end/.venv
+      - ./logs:/logs
+
+    depends_on:
+      redis:
+        condition: service_healthy
+
+    command: >
+      taskiq scheduler
+      back_end.services.infra.filas.taskiq.taskiq_app:scheduler
+      back_end.services.infra.filas.tasks.email_task
+      --update-interval 1
+      --loop-interval 1
+
+    restart: unless-stopped
 
 volumes:
   esdata:
