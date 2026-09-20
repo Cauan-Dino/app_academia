@@ -9,7 +9,6 @@ from redis.exceptions import RedisError
 
 from back_end.core.logging.logs_settings import logger
 
-from .setting import settings
 from .whatsapp_service import WhatsappService
 
 from datetime import datetime, timedelta, timezone
@@ -99,7 +98,7 @@ class UtilsChatbotService:
             )
             await self.whatsapp_service.enviar_mensagem_texto(
                 "Nosso serviço está temporariamente indisponível. Por favor, tente mais tarde",
-                telefone=settings.WHATSAPP_TEST_RECIPIENT,
+                telefone=telefone_aluno,
             )
 
 
@@ -152,13 +151,14 @@ class UtilsChatbotService:
             )
             await self.whatsapp_service.enviar_mensagem_texto(
                 "Nosso serviço está temporariamente indisponível. Por favor, tente mais tarde",
-                telefone=settings.WHATSAPP_TEST_RECIPIENT,
+                telefone=telefone_aluno,
             )
             raise
 
     async def validar_e_converter_data_hora(
         self,
         data_hora_aula_original: str,
+        telefone_aluno: str,
         *,
         exigir_data_futura: bool = True,
     ) -> datetime | None:
@@ -184,7 +184,7 @@ class UtilsChatbotService:
                     "Não entendi a data e o horário.\n"
                     "Envie neste formato: 14/09/2026 às 08:00."
                 ),
-                telefone=settings.WHATSAPP_TEST_RECIPIENT,
+                telefone=telefone_aluno,
             )
 
             return None
@@ -199,7 +199,7 @@ class UtilsChatbotService:
                         "Para continuar o reagendamento, informe uma data e um horário "
                         "futuros, no formato DD/MM/AAAA às HH:MM."
                     ),
-                    telefone=settings.WHATSAPP_TEST_RECIPIENT,
+                    telefone=telefone_aluno,
                 )
                 return None
 
@@ -223,7 +223,7 @@ class UtilsChatbotService:
         except RedisError:
             await self.whatsapp_service.enviar_mensagem_texto(
                 texto="Serviço temporariamente indisponível. Tente mais tarde.",
-                telefone=settings.WHATSAPP_TEST_RECIPIENT,
+                telefone=telefone_aluno,
             )
             return None
 
@@ -233,7 +233,7 @@ class UtilsChatbotService:
                     "Não encontrei uma sessão de reagendamento ativa. "
                     "Digite 'menu' e escolha a opção 2 para começar novamente."
                 ),
-                telefone=settings.WHATSAPP_TEST_RECIPIENT,
+                telefone=telefone_aluno,
             )
             return None
 

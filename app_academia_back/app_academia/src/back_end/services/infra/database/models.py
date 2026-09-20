@@ -280,6 +280,11 @@ class SolicitacaoMudanca(Base):
         nullable=True,
     )
 
+    whatsapp_notificada_em: Mapped[datetime | None] = mapped_column(
+        DateTime,
+        nullable=True,
+    )
+
     expira_em: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,

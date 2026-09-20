@@ -85,6 +85,8 @@ class DeletePersonalAcountService:
         # Exclui logicamente a conta do usuario
         usuario.usuario_ativo = False
         usuario.email_verificado = False
+        usuario.email = None
+        usuario.telefone = f'del:{usuario.id}'
         usuario.token_version += 1 # Invalida o access e refresh token atuais
 
         try:
@@ -94,7 +96,7 @@ class DeletePersonalAcountService:
             raise HTTPException(status_code=500, detail='Ocorreu um erro desconhecido.')
 
         # Deleta a chave do access_token que é salva em "verificar_access_token"
-        await redis_client.delete(f"usuario_status:{usuario.email}")
+        await redis_client.delete(f"usuario_status:{email}")
 
         logger.info('Conta Excluída', extra={'usuario_id': usuario.id})
         return {'message':"Conta Excluída com sucesso!"}

@@ -1,4 +1,4 @@
-"""Configurações e credenciais utilizadas pela integração com o WhatsApp."""
+"""Configurações do WhatsApp compartilhadas pelo chatbot e pelas notificações."""
 
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     WHATSAPP_API_VERSION: str = "v26.0"
     WHATSAPP_TEST_RECIPIENT: str
 
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: int = 6379
+    REDIS_PASSWORD: SecretStr
 
 settings = Settings()
 

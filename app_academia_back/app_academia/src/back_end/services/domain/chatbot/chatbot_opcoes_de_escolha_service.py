@@ -1,10 +1,12 @@
 """Textos do menu, consulta de aulas e encerramento da sessão principal."""
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, or_
 from back_end.services.infra.database.models import Alunos, AulaFixa, ParticipanteAula, SolicitacaoMudanca, StatusSolicitacao
 from redis.asyncio import Redis
 from back_end.core.logging.logs_settings import logger
+from datetime import datetime, timezone
+from .utils_chatbot_service import FUSO_HORARIO_ACADEMIA
 
 class ChatBotOptionsService:
     """Prepara as respostas das opções disponíveis no menu do chatbot."""
@@ -37,6 +39,8 @@ class ChatBotOptionsService:
         A consulta atual associa aluno e aula pelo personal, sem filtrar
         inscrições em ParticipanteAula. Retorna um aviso se não houver aulas.
         """
+        agora_local = datetime.now(FUSO_HORARIO_ACADEMIA).replace(tzinfo=None)
+        agr_utc = datetime.now(timezone.utc).replace(tzinfo=None)
         query = (
             select(
                 AulaFixa,
@@ -56,6 +60,14 @@ class ChatBotOptionsService:
                     SolicitacaoMudanca.aluno_id == Alunos.id,
                     SolicitacaoMudanca.personal_id == AulaFixa.personal_id,
                     SolicitacaoMudanca.aula_fixa_id == ParticipanteAula.aula_fixa_id,
+                    SolicitacaoMudanca.nova_data_hora_fim  > agora_local,
+                    or_(
+                        SolicitacaoMudanca.status == StatusSolicitacao.ACEITA,
+                        and_(
+                            SolicitacaoMudanca.status == StatusSolicitacao.PENDENTE,
+                            SolicitacaoMudanca.expira_em > agr_utc,
+                        ),
+                    ),
                     SolicitacaoMudanca.status.in_(
                         [
                             StatusSolicitacao.PENDENTE,

@@ -8,6 +8,7 @@ from back_end.core.logging.logs_settings import logger
 from redis.asyncio import Redis
 from back_end.services.domain.aluno.aluno_query_service import AlunoQueryService 
 from back_end.services.domain.aluno.aluno_utils import PersonalClientUtils
+from back_end.services.infra.redis_service.notificacao_cache import invalidar_cache_notificacoes
 
 class AlunoCommandService:
     def __init__(self, db: AsyncSession, redis_client: Redis):
@@ -144,6 +145,7 @@ class AlunoCommandService:
                 exc_info=False
                 )
 
+        await invalidar_cache_notificacoes(self.redis_client, personal_id)
         return {"message": "Informações do aluno alteradas com sucesso!"}
 
 
@@ -187,4 +189,5 @@ class AlunoCommandService:
         except Exception:
             logger.exception("Não foi possível invalidar o cache dos alunos")
 
+        await invalidar_cache_notificacoes(self.redis_client, personal_id)
         return {'message':f'Aluno deletado: {aluno.nome}'}

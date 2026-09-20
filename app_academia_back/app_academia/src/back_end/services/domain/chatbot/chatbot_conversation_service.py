@@ -6,8 +6,7 @@ from .whatsapp_service import WhatsappService
 from .chatbot_opcoes_de_escolha_service import ChatBotOptionsService
 from .chatbot_solicitacao_mudanca_aula_service import SolicitacaoReagendamentoAulaService
 from .utils_chatbot_service import UtilsChatbotService
-from .setting import settings
-from redis.asyncio import Redis, RedisError
+from redis.asyncio import Redis
 from fastapi import Response
 
 class ChatbotConversationService:
@@ -68,7 +67,7 @@ class ChatbotConversationService:
             )
         )
 
-        # Usa a sessão que já foi consultada.
+        # Usa a sessão que já foi consultada (na opcao [2] )
         if sessao_reagendamento is not None:
             await self.chatbot_solicitacao_mudanca_service.solicitar_mudanca(
                 texto_aluno=texto_aluno,
@@ -84,7 +83,7 @@ class ChatbotConversationService:
             texto = self.chatbot_options_service.menu()
             await self.whatzap_service.enviar_mensagem_texto(
                     texto=texto,
-                    telefone=settings.WHATSAPP_TEST_RECIPIENT
+                    telefone=telefone_aluno
                 )
 
 
@@ -93,14 +92,14 @@ class ChatbotConversationService:
                 texto = await self.chatbot_options_service.resposta_opcao_1_consultar_aulas(telefone_aluno=telefone_aluno)
                 await self.whatzap_service.enviar_mensagem_texto(
                     texto=texto,
-                    telefone=settings.WHATSAPP_TEST_RECIPIENT
+                    telefone=telefone_aluno
                 )
                 
             elif texto_aluno == '2':
                 texto = self.chatbot_options_service.resposta_opcao_2_()
                 await self.whatzap_service.enviar_mensagem_texto(
                     texto=texto,
-                    telefone=settings.WHATSAPP_TEST_RECIPIENT
+                    telefone=telefone_aluno
                 )
                 # Salva no redis pra indicar que o aluno começou a responder as perguntas pra mudar o horario da aula
                 await self.utils_chatbot_service.salvar_situacao_de_agendamento_de_aula_no_redis(
@@ -119,7 +118,7 @@ class ChatbotConversationService:
                 texto = await self.chatbot_options_service.resposta_opcao_0_(telefone=telefone_aluno)
                 await self.whatzap_service.enviar_mensagem_texto(
                     texto=texto,
-                    telefone=settings.WHATSAPP_TEST_RECIPIENT
+                    telefone=telefone_aluno
                 )
                 return Response(status_code=200)
 
@@ -127,13 +126,13 @@ class ChatbotConversationService:
                 texto = self.chatbot_options_service.menu()
                 await self.whatzap_service.enviar_mensagem_texto(
                         texto=texto,
-                        telefone=settings.WHATSAPP_TEST_RECIPIENT
+                        telefone=telefone_aluno
                     )
 
             else:
                 await self.whatzap_service.enviar_mensagem_texto(
                 texto='Por favor, digite alguma opção válida.',
-                telefone=settings.WHATSAPP_TEST_RECIPIENT
+                telefone=telefone_aluno
             )
                 
             await self.utils_chatbot_service._salvar_redis(

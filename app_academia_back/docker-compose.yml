@@ -78,7 +78,7 @@ services:
       - ./logs:/logs
 #      - ./banco_de_dados.db:/app/banco_de_dados.db
 
-    command: uvicorn back_end.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn back_end.main:app --host 0.0.0.0 --port 8000
     restart: unless-stopped 
   
   elasticsearch:
@@ -133,6 +133,31 @@ services:
     depends_on:
       elasticsearch:
         condition: service_healthy
+
+  taskiq_scheduler:
+    build: .
+    env_file:
+      - .env
+
+    environment:
+      LOG_FILE_PATH: /logs/taskiq_scheduler.log
+
+    volumes:
+      - ./app_academia/src/back_end:/app/back_end
+      - ./logs:/logs
+
+    depends_on:
+      redis:
+        condition: service_healthy
+
+    command: >
+      taskiq scheduler
+      back_end.services.infra.filas.taskiq.taskiq_app:scheduler
+      back_end.services.infra.filas.tasks.email_task
+      --update-interval 1
+      --loop-interval 1
+
+    restart: unless-stopped
 
 volumes:
   esdata:

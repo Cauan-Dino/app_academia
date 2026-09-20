@@ -3,13 +3,12 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from back_end.services.infra.database.models import DiaDaSemana
 from datetime import datetime, timezone, timedelta
-from sqlalchemy import select, and_
-from back_end.services.infra.database.models import AulaFixa, Alunos, ParticipanteAula, SolicitacaoMudanca, StatusSolicitacao
+from sqlalchemy import select, and_, or_
+from back_end.services.infra.database.models import AulaFixa, Personal, Alunos, ParticipanteAula, SolicitacaoMudanca, StatusSolicitacao
 from back_end.core.logging.logs_settings import logger
 from redis.asyncio import RedisError, Redis
 from .whatsapp_service import WhatsappService
 from .utils_chatbot_service import UtilsChatbotService
-from .setting import settings
 from back_end.schemas.chatbot_schemas import SessaoReagendamento
 from back_end.services.domain.notificacao.enviar_notificaco_service import NotificacaoService
 
@@ -93,6 +92,7 @@ class SolicitacaoReagendamentoAulaService:
         """
         data_hora = await self.utils_chatbot_service.validar_e_converter_data_hora(
             data_hora_aula_original=data_hora_aula_original,
+            telefone_aluno=telefone_aluno,
             exigir_data_futura=False
         )
         if data_hora is None:
@@ -101,12 +101,15 @@ class SolicitacaoReagendamentoAulaService:
         # Pega o dia da semana, ex: quarta = 2
         dia_da_semana = DIAS_DA_SEMANA[data_hora.weekday()]
         horario_inicio = data_hora.time()
+        agora_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+
         query = (
             select(
                 AulaFixa,
-                Alunos.id.label('aluno_id'),
-                Alunos.nome.label('aluno_nome'),
+                Alunos.id.label("aluno_id"),
+                Alunos.nome.label("aluno_nome"),
                 AulaFixa.personal_id.label("personal_id"),
+                SolicitacaoMudanca,
             )
             .join(
                 ParticipanteAula,
@@ -115,6 +118,22 @@ class SolicitacaoReagendamentoAulaService:
             .join(
                 Alunos,
                 Alunos.id == ParticipanteAula.aluno_id,
+            )
+            .outerjoin(
+                SolicitacaoMudanca,
+                and_(
+                    SolicitacaoMudanca.personal_id == AulaFixa.personal_id,
+                    SolicitacaoMudanca.aluno_id == Alunos.id,
+                    SolicitacaoMudanca.aula_fixa_id == AulaFixa.id,
+                    SolicitacaoMudanca.data_hora_aula_original == data_hora,
+                    or_(
+                        SolicitacaoMudanca.status == StatusSolicitacao.ACEITA,
+                        and_(
+                            SolicitacaoMudanca.status == StatusSolicitacao.PENDENTE,
+                            SolicitacaoMudanca.expira_em > agora_utc,
+                        ),
+                    ),
+                ),
             )
             .where(
                 Alunos.telefone == telefone_aluno,
@@ -128,12 +147,26 @@ class SolicitacaoReagendamentoAulaService:
         if not aula:
             await self.whatsapp_service.enviar_mensagem_texto(
                 'Não existe nenhuma aula nesse horário.',
-                telefone=settings.WHATSAPP_TEST_RECIPIENT
+                telefone=telefone_aluno
             )
             return
 
-        # Desempacota os tres valores do único registro encontrado.
-        aula, aluno_id, aluno_nome, personal_id = aula[0]
+        # Desempacota os cinco valores da primeira linha encontrada.
+        aula, aluno_id, aluno_nome, personal_id, solicitacao = aula[0]
+
+        # Impede de reagendar a msm aula_original se tiver uma aula reagendada pendente ou aceita 
+        if solicitacao is not None:
+            texto = (
+                "Essa aula já teve o reagendamento aceito."
+                if solicitacao.status == StatusSolicitacao.ACEITA
+                else "Já existe uma solicitação pendente para essa aula."
+            )
+
+            await self.whatsapp_service.enviar_mensagem_texto(
+                texto=texto,
+                telefone=telefone_aluno,
+            )
+            return
         
         sessao: SessaoReagendamento = {
             "personal_id": personal_id,
@@ -153,10 +186,9 @@ class SolicitacaoReagendamentoAulaService:
         
         await self.whatsapp_service.enviar_mensagem_texto(
             texto="Para qual data e horário? Exemplo: 15/09/2026 às 10:00.",
-            telefone=settings.WHATSAPP_TEST_RECIPIENT,
+            telefone=telefone_aluno,
         )
 
-        
         logger.info(
             f'Aula {aula.id} foi marcada pra ser reagendada do aluno {aluno_id}.'
         )
@@ -182,7 +214,7 @@ class SolicitacaoReagendamentoAulaService:
                     "Sua aula continua na data e no horário originais.\n\n"
                     "Digite 'menu' para voltar às opções."
                 ),
-                telefone=settings.WHATSAPP_TEST_RECIPIENT,
+                telefone=telefone_aluno,
             )
             logger.info(
                 'Conversa de reagendamento de aula finalizada.'
@@ -194,7 +226,7 @@ class SolicitacaoReagendamentoAulaService:
             )
             await self.whatsapp_service.enviar_mensagem_texto(
                 'Nosso serviço está temporariamente indisponível. Por favor, tente mais tarde',
-                telefone=settings.WHATSAPP_TEST_RECIPIENT
+                telefone=telefone_aluno
             )
 
             return
@@ -207,6 +239,7 @@ class SolicitacaoReagendamentoAulaService:
     ) -> None:
         data_hora = await self.utils_chatbot_service.validar_e_converter_data_hora(
             data_hora_aula_original=data_hora_aula_original,
+            telefone_aluno=telefone_aluno,
             exigir_data_futura=True
         )
         if data_hora is None:
@@ -236,10 +269,11 @@ class SolicitacaoReagendamentoAulaService:
         if resultado_aula_fixa_existente:
             await self.whatsapp_service.enviar_mensagem_texto(
                 texto='Você já possui uma aula nesse horario.',
-                telefone=settings.WHATSAPP_TEST_RECIPIENT
+                telefone=telefone_aluno
             )
             return 
 
+        agora_utc = datetime.now(timezone.utc).replace(tzinfo=None)
         # Verifica se existe uma aula remarcada pra essa data, verificando apenas o nova_data_hora_inicio
         query_aula_remarcada_pro_msm_horario = (
             select(Alunos)
@@ -257,11 +291,12 @@ class SolicitacaoReagendamentoAulaService:
             .where(
                 Alunos.telefone == telefone_aluno,
                 SolicitacaoMudanca.nova_data_hora_inicio == data_hora,
-                SolicitacaoMudanca.status.in_(
-                    [
-                        StatusSolicitacao.ACEITA,
-                        StatusSolicitacao.PENDENTE
-                    ]
+                or_(
+                    SolicitacaoMudanca.status == StatusSolicitacao.ACEITA,
+                    and_(
+                        SolicitacaoMudanca.status == StatusSolicitacao.PENDENTE,
+                        SolicitacaoMudanca.expira_em > agora_utc,
+                    ),
                 )
             )
         )
@@ -270,7 +305,7 @@ class SolicitacaoReagendamentoAulaService:
         if resultado_aula_remarcada_pro_msm_horario:
             await self.whatsapp_service.enviar_mensagem_texto(
                 texto='Você já possui uma aula reagendada nesse horario.',
-                telefone=settings.WHATSAPP_TEST_RECIPIENT
+                telefone=telefone_aluno
             )
             return
 
@@ -296,7 +331,7 @@ class SolicitacaoReagendamentoAulaService:
         
         await self.whatsapp_service.enviar_mensagem_texto(
             texto="Para qual horário deseja que aula termine? Exemplo: 10:00.",
-            telefone=settings.WHATSAPP_TEST_RECIPIENT,
+            telefone=telefone_aluno,
         )
         
         
@@ -334,7 +369,7 @@ class SolicitacaoReagendamentoAulaService:
             except ValueError:
                 await self.whatsapp_service.enviar_mensagem_texto(
                     texto="Horário inválido. Informe no formato HH:MM. Exemplo: 10:30.",
-                    telefone=settings.WHATSAPP_TEST_RECIPIENT,
+                    telefone=telefone_aluno,
                 )
                 return
 
@@ -347,7 +382,7 @@ class SolicitacaoReagendamentoAulaService:
                         "O horário de término deve ser posterior "
                         "ao horário de início da aula."
                     ),
-                    telefone=settings.WHATSAPP_TEST_RECIPIENT,
+                    telefone=telefone_aluno,
                 )
                 return
 
@@ -375,12 +410,20 @@ class SolicitacaoReagendamentoAulaService:
 
             aula_fixa_id  = await self.db.scalar(query_aula_fixa)
             if aula_fixa_id :
+                # Volta atras na sessao, vboltando pra aguuardadndo
+                sessao: SessaoReagendamento = await self.utils_chatbot_service.pega_cache_e_verificar_se_redis_esta_online(telefone_aluno=telefone_aluno)
+                sessao['nova_data_hora_inicio'] = 'aguardando'
+                # nova_data_hora_inicio colocado como aguradando
+                await self.utils_chatbot_service.salvar_situacao_de_agendamento_de_aula_no_redis(telefone_aluno=telefone_aluno, sessao=sessao)
+
                 await self.whatsapp_service.enviar_mensagem_texto(
                     texto=(
                         "Você já possui uma aula nesse período.\n"
-                        "Por favor, escolha outra data ou outro horário."
+                        "Por favor, escolha outra data ou outro horário.\n\n"
+                        "Preciso que você informe novamente a data e horario que deseja reagendar a aula"
+                        "Para qual data e horário? Exemplo: 15/09/2026 às 10:00."
                     ),
-                    telefone=settings.WHATSAPP_TEST_RECIPIENT,
+                    telefone=telefone_aluno,
                 )
                 logger.info(
                     "Reagendamento não continuado: aluno já possui uma aula no período informado.",
@@ -392,34 +435,44 @@ class SolicitacaoReagendamentoAulaService:
                 )
                 return
 
+            agora_utc = datetime.now(timezone.utc).replace(tzinfo=None)
             # Verifica se ha sobreposicao em uma aula ja reagendada
             query_aula_reagendada = (
                 select(SolicitacaoMudanca.id)
                 .where(
                     SolicitacaoMudanca.aluno_id == sessao["aluno_id"],
-                    SolicitacaoMudanca.nova_data_hora_inicio
-                    < nova_data_hora_fim,
-                    SolicitacaoMudanca.nova_data_hora_fim
-                    > nova_data_hora_inicio,
-                    SolicitacaoMudanca.status.in_(
-                        [
-                            StatusSolicitacao.PENDENTE,
-                            StatusSolicitacao.ACEITA,
-                        ]
-                    ),
+                    SolicitacaoMudanca.nova_data_hora_inicio < nova_data_hora_fim,
+                    SolicitacaoMudanca.nova_data_hora_fim > nova_data_hora_inicio,
+                    or_(
+                        SolicitacaoMudanca.status == StatusSolicitacao.ACEITA,
+                        and_(
+                            SolicitacaoMudanca.status == StatusSolicitacao.PENDENTE,
+                            SolicitacaoMudanca.expira_em > agora_utc,
+                        ),
+                    )
                 )
                 .limit(1)
             )
 
             aula_reagendada_id = await self.db.scalar(query_aula_reagendada)
             if aula_reagendada_id:
+                # Volta atras na sessao, vboltando pra aguuardadndo
+                sessao: SessaoReagendamento = await self.utils_chatbot_service.pega_cache_e_verificar_se_redis_esta_online(telefone_aluno=telefone_aluno)
+                sessao['nova_data_hora_inicio'] = 'aguardando'
+                # nova_data_hora_inicio colocado como aguradando
+                await self.utils_chatbot_service.salvar_situacao_de_agendamento_de_aula_no_redis(telefone_aluno=telefone_aluno, sessao=sessao)
+
                 await self.whatsapp_service.enviar_mensagem_texto(
                     texto=(
-                        "Você já possui uma aula reagendada nesse período.\n"
-                        "Por favor, escolha outra data ou outro horário."
+                        "Você já possui uma aula nesse período.\n"
+                        "Por favor, escolha outra data ou outro horário.\n\n"
+                        "Preciso que você informe novamente a data e horario que deseja reagendar a aula"
+                        "Para qual data e horário? Exemplo: 15/09/2026 às 10:00."
                     ),
-                    telefone=settings.WHATSAPP_TEST_RECIPIENT,
+                    telefone=telefone_aluno,
                 )
+
+
                 logger.info(
                     "Reagendamento não continuado: aluno já possui uma aula reagendada no período informado.",
                     extra={
@@ -442,7 +495,7 @@ class SolicitacaoReagendamentoAulaService:
                     'Qual o motivo do reagendamento?\n\n'
                     'Escreva em até 250 caracteres.'
                 ),
-                telefone=settings.WHATSAPP_TEST_RECIPIENT,
+                telefone=telefone_aluno,
             )
             logger.info(
                 "Aula original selecionada para reagendamento.",
@@ -480,12 +533,85 @@ class SolicitacaoReagendamentoAulaService:
                         "Por favor, resuma o motivo e envie novamente."
                     )
                 ),
-                telefone=settings.WHATSAPP_TEST_RECIPIENT
+                telefone=telefone_aluno
             )
             return
 
+        # Verifica se o personal excluiu a conta
+        personal = await self.db.scalar(
+            select(Personal)
+            .where(
+                Personal.id == sessao["personal_id"],
+                Personal.usuario_ativo.is_(True),
+            )
+            .with_for_update()
+        )
+
+        # Envia uma mensagem informando que não é possivel reagendar a aula
+        if personal is None:
+            await self.db.rollback()
+
+            await self.whatsapp_service.enviar_mensagem_texto(
+                texto=(
+                    "Não foi possível concluir o reagendamento porque o personal "
+                    "não está mais disponível."
+                ),
+                telefone=telefone_aluno,
+            )
+            return
+
+        # ---- Impede que seja criada uma solicitação de reagendamento duplicada para a mesma aula -----------
+        agora_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+        data_original = datetime.fromisoformat(
+            sessao["data_hora_aula_original"]
+        )
+
+        solicitacao_existente = await self.db.scalar(
+            select(SolicitacaoMudanca)
+            .where(
+                SolicitacaoMudanca.personal_id == sessao["personal_id"],
+                SolicitacaoMudanca.aluno_id == sessao["aluno_id"],
+                SolicitacaoMudanca.aula_fixa_id == sessao["aula_fixa_id"],
+                SolicitacaoMudanca.data_hora_aula_original == data_original,
+                or_(
+                    SolicitacaoMudanca.status == StatusSolicitacao.ACEITA,
+                    and_(
+                        SolicitacaoMudanca.status == StatusSolicitacao.PENDENTE,
+                        SolicitacaoMudanca.expira_em > agora_utc,
+                    ),
+                ),
+            )
+            .limit(1)
+            .with_for_update()
+        )
+
+        if solicitacao_existente is not None:
+            # Encerra a transação e libera as travas antes do envio.
+            await self.db.rollback()
+
+            try:
+                await self.redis_client.delete(
+                    f"chatbot:reagendamento:{telefone_aluno}:aula_original"
+                )
+            except RedisError:
+                logger.warning(
+                    "Não foi possível remover a sessão de reagendamento."
+                )
+
+            await self.whatsapp_service.enviar_mensagem_texto(
+                texto=(
+                    "Já existe uma solicitação pendente ou aceita "
+                    "para essa aula. Nenhum novo pedido foi criado."
+                ),
+                telefone=telefone_aluno,
+            )
+            return
+
+        # --------------------------------------------------------
+        
         # Expiracao pra solicitação de mudanca de hora expirar
-        expiracao = datetime.now(timezone.utc) + timedelta(days=1)
+        criada_em = datetime.now(timezone.utc).replace(tzinfo=None)
+        expiracao = criada_em + timedelta(days=1)
         
         # Salva no banco que a solicitacao foi enviada
         reagendamento_aula = SolicitacaoMudanca(
@@ -503,11 +629,24 @@ class SolicitacaoReagendamentoAulaService:
             ),
             motivo=motivo,
             status=StatusSolicitacao.PENDENTE,
+            criada_em=criada_em,
             expira_em=expiracao
         )
 
         try:
             self.db.add(reagendamento_aula)
+            await self.db.flush()
+            notificacao = await self.notificacao_service.registrar_notificacao(
+                personal_id=sessao['personal_id'],
+                solicitacao_id=reagendamento_aula.id,
+                title=f"Pedido de reagendamento: {sessao['aluno_nome']}",
+                body=(
+                    f"Aula de {reagendamento_aula.data_hora_aula_original.strftime('%d/%m às %H:%M')} "
+                    f"para {reagendamento_aula.nova_data_hora_inicio.strftime('%d/%m %H:%M')} "
+                    f"– {reagendamento_aula.nova_data_hora_fim.strftime('%H:%M')}.\n"
+                    f"Motivo: {motivo}"
+                ),
+            )
             await self.db.commit()
         except Exception:
             await self.db.rollback()
@@ -522,12 +661,13 @@ class SolicitacaoReagendamentoAulaService:
 
             await self.whatsapp_service.enviar_mensagem_texto(
                 texto="Ocorreu um erro. Por favor, tente novamente mais tarde.",
-                telefone=settings.WHATSAPP_TEST_RECIPIENT,
+                telefone=telefone_aluno,
             )
             return
 
 
-        # Exclui a sessao salva no redis
+        # Encerra a sessão antes de qualquer envio: se algum passo abaixo falhar,
+        # um retry do webhook não reentra nesta etapa e não duplica a solicitação.
         try:
             await self.redis_client.delete(
                 f"chatbot:reagendamento:{telefone_aluno}:aula_original"
@@ -539,27 +679,20 @@ class SolicitacaoReagendamentoAulaService:
                 exc_info=True,
             )
 
+        # Falhar em avisar o personal não impede a confirmação ao aluno.
+        try:
+            await self.notificacao_service.enviar_notificacao_registrada(notificacao)
+        except Exception:
+            logger.exception(
+                "Solicitação salva, mas não foi possível notificar o personal.",
+                extra={"solicitacao_id": reagendamento_aula.id},
+            )
+
         await self.whatsapp_service.enviar_mensagem_texto(
             texto=(
                 "Sua solicitação de reagendamento foi registrada! ✅\n\n"
                 "Agora ela aguarda a aprovação ou recusa do seu personal. "
                 "Até a aprovação, sua aula continua na data e no horário originais."
             ),
-            telefone=settings.WHATSAPP_TEST_RECIPIENT,
-        )
-        
-        # Envia notificação pro personal informando que o aluno deseja reagendar a aula
-        data_original = datetime.fromisoformat(sessao['data_hora_aula_original'])
-        novo_inicio = datetime.fromisoformat(sessao['nova_data_hora_inicio'])
-        novo_fim = datetime.fromisoformat(sessao['nova_data_hora_fim'])
-
-        await self.notificacao_service.enviar_notificacao(
-            personal_id=sessao['personal_id'],
-            title=f"Pedido de reagendamento: {sessao['aluno_nome']}",
-            body=(
-                f"Aula de {data_original.strftime('%d/%m às %H:%M')} "
-                f"para {novo_inicio.strftime('%d/%m %H:%M')} "
-                f"– {novo_fim.strftime('%H:%M')}.\n"
-                f"Motivo: {motivo}"
-            ),
+            telefone=telefone_aluno,
         )

@@ -44,6 +44,6 @@ def get_chat_bot_conversation_service(
             whatsapp_service=whatsapp_service, 
             redis_client=redis_client,
             utils_chatbot_service=utils_chatbot_service,
-            notificacao_service=NotificacaoService(db=db),
+            notificacao_service=NotificacaoService(db=db, redis_client=redis_client),
         )
     )

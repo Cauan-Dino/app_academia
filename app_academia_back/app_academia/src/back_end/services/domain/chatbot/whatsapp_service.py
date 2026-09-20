@@ -8,7 +8,7 @@ import secrets
 import hmac
 import hashlib
 from fastapi import Request
-from .setting import settings
+from back_end.services.infra.config.settings import settings
 import httpx2 
 from back_end.core.logging.logs_settings import logger
 import json

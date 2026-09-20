@@ -5,6 +5,9 @@
 .env.*
 env_db_test.env
 *.env
+# Modelo sem segredos, versionado de propósito
+!.env.example
+!**/.env.example
 /app_academia_back/banco_de_dados.db
 informacoes_app.md
 
