@@ -9,13 +9,55 @@ from redis.asyncio import Redis
 from back_end.services.domain.aluno.aluno_query_service import AlunoQueryService 
 from back_end.services.domain.aluno.aluno_utils import PersonalClientUtils
 from back_end.services.infra.redis_service.notificacao_cache import invalidar_cache_notificacoes
+from back_end.services.domain.chatbot.whatsapp_service import WhatsappService
+from back_end.services.infra.config.settings import settings
 
 class AlunoCommandService:
-    def __init__(self, db: AsyncSession, redis_client: Redis):
+    def __init__(
+        self,
+        db: AsyncSession,
+        redis_client: Redis,
+        whatsapp_service: WhatsappService,
+    ):
         self.db = db
         self.redis_client = redis_client
+        self.whatsapp_service = whatsapp_service
         self.query_service = AlunoQueryService(db, redis_client)
         self.client_utils = PersonalClientUtils()
+
+
+    async def _verificar_telefone_no_whatsapp(
+        self,
+        aluno: Alunos,
+        nome_personal: str,
+    ) -> bool | None:
+        """Envia o template de boas-vindas e grava se o número recebe WhatsApp.
+
+        O cadastro já está salvo quando isto roda: uma falha aqui não desfaz o
+        aluno, apenas deixa a verificação pendente (None).
+        """
+        resultado = await self.whatsapp_service.enviar_template(
+            telefone=aluno.telefone,
+            nome_template=settings.WHATSAPP_TEMPLATE_BOAS_VINDAS,
+            idioma=settings.WHATSAPP_TEMPLATE_IDIOMA,
+            parametros={
+                "nome_do_aluno": aluno.nome,
+                "nome_do_personal": nome_personal,
+            },
+        )
+
+        aluno.telefone_verificado = resultado
+        try:
+            await self.db.commit()
+        except Exception:
+            await self.db.rollback()
+            logger.warning(
+                "Aluno cadastrado, mas não foi possível gravar a verificação do telefone",
+                extra={"aluno_id": aluno.id},
+                exc_info=False,
+            )
+
+        return resultado
 
 
     async def cadastrar_aluno(
@@ -55,8 +97,28 @@ class AlunoCommandService:
                 )
         except Exception:
             logger.exception("Não foi possível invalidar o cache dos alunos", exc_info=False)
-            
-        return {'message':'Aluno cadastrado com sucesso!'}
+
+        telefone_verificado = await self._verificar_telefone_no_whatsapp(
+            aluno=informacoes_aluno,
+            nome_personal=access_token.get("nome", ""),
+        )
+
+        if telefone_verificado is False:
+            mensagem = (
+                "Aluno cadastrado, mas esse número não recebe WhatsApp. "
+                "Confira se foi digitado corretamente."
+            )
+        elif telefone_verificado is None:
+            mensagem = (
+                "Aluno cadastrado. Não foi possível confirmar o número no WhatsApp agora."
+            )
+        else:
+            mensagem = "Aluno cadastrado com sucesso! Enviamos uma mensagem de boas-vindas."
+
+        return {
+            "message": mensagem,
+            "telefone_verificado": telefone_verificado,
+        }
 
 
 

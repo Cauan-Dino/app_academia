@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     PHONE_NUMBER_ID: str
     WHATSAPP_API_VERSION: str = "v26.0"
 
+    # Template aprovado na Meta, enviado ao aluno no cadastro.
+    WHATSAPP_TEMPLATE_BOAS_VINDAS: str = "boas_vindas_aluno"
+    WHATSAPP_TEMPLATE_IDIOMA: str = "pt_BR"
+
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
     REDIS_PASSWORD: SecretStr

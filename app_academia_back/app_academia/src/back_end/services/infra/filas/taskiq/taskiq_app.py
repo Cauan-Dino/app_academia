@@ -1,4 +1,5 @@
 from taskiq import SmartRetryMiddleware, TaskiqScheduler
+from taskiq.schedule_sources import LabelScheduleSource
 from taskiq_redis import RedisStreamBroker, ListRedisScheduleSource
 
 from back_end.services.infra.config.settings import settings
@@ -15,6 +16,14 @@ schedule_source = ListRedisScheduleSource(
 broker = RedisStreamBroker(
     url=redis_url,
     queue_name="my_queue",
+    # Inclui mensagens publicadas antes da primeira inicialização dos workers.
+    consumer_id="0",
+    # Recupera mensagens de processos mortos antes de a aula começar (em ms).
+    idle_timeout=60_000,
+    # A trava do XAUTOCLAIM também precisa expirar se seu dono morrer.
+    unacknowledged_lock_timeout=10,
+    unacknowledged_batch_size=1,
+    xread_count=1,
     max_connection_pool_size=10,
     password=redis_password,
 ).with_middlewares(
@@ -30,5 +39,5 @@ broker = RedisStreamBroker(
 
 scheduler = TaskiqScheduler(
     broker=broker,
-    sources=[schedule_source],
+    sources=[schedule_source, LabelScheduleSource(broker)],
 )

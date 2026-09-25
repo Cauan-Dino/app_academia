@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Alert, Pressable, Text, View } from 'react-native';
 import { api } from './api';
 import { Button, Field, Notice } from './components';
 import { colors } from './theme';
@@ -82,7 +82,12 @@ export function StudentFormScreen({ student, onBack, onSaved }) {
     setError('');
     try {
       if (editing) await api.updateStudent(student.id, { nome, telefone });
-      else await api.createStudent({ nome, telefone });
+      else {
+        const resposta = await api.createStudent({ nome, telefone });
+        if (resposta?.telefone_verificado === false) {
+          Alert.alert('Confira o telefone', resposta.message);
+        }
+      }
       onSaved();
     } catch (requestError) {
       setError(requestError.message);

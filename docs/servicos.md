@@ -15,16 +15,16 @@ Os serviços recebem suas dependências pelo construtor e são montados pelos ar
 
 | Serviço | Responsabilidade |
 |---|---|
-| `PersonalCadastroService` | Cadastra a conta e confirma o e-mail. Recusa telefones ou e-mails já usados por qualquer conta (ativa ou excluída) e valida a força da senha. A conta nasce inativa e só é liberada ao clicar no link de confirmação. |
+| `PersonalCadastroService` | Cadastra a conta e confirma o e-mail. Recusa e-mails já usados por qualquer conta (ativa ou excluída) e valida a força da senha. A conta nasce inativa e só é liberada ao clicar no link de confirmação. |
 | `PersonalLoginService` | Autentica por e-mail e senha e emite o par access/refresh token. Bloqueia contas inativas ou com e-mail não confirmado. |
 | `UpdatePersonalDetailsService` | Altera o nome e conduz a troca de senha nos dois cenários: logado (pede o e-mail atual como confirmação) e deslogado ("esqueci minha senha"). Ao trocar a senha, incrementa o `token_version`, derrubando as sessões antigas. |
-| `DeletePersonalAcountService` | Exclui a conta em duas etapas: valida a senha (com rate limit de 5 tentativas) e envia um link por e-mail; ao confirmar, faz a exclusão lógica e anonimiza telefone e e-mail. |
+| `DeletePersonalAcountService` | Exclui a conta em duas etapas: valida a senha (com rate limit de 5 tentativas) e envia um link por e-mail; ao confirmar, faz a exclusão lógica e anonimiza o e-mail. |
 
 ### `domain/aluno` — alunos do personal
 
 | Serviço | Responsabilidade |
 |---|---|
-| `AlunoCommandService` | Cadastra, altera e exclui alunos. Cada aluno pertence a um personal. |
+| `AlunoCommandService` | Cadastra, altera e exclui alunos. Cada aluno pertence a um personal. No cadastro, envia o template de boas-vindas pelo WhatsApp e grava em `telefone_verificado` se o número recebe mensagens — o resultado volta na resposta para o personal corrigir um número errado na hora. |
 | `AlunoQueryService` | Busca alunos (lista completa, por id ou por nome) e verifica duplicidade de nome e telefone dentro daquele personal. |
 | `PersonalClientUtils` | Apoio aos dois acima: serializa alunos para resposta, extrai o `personal_id` do token e normaliza o nome informado. |
 

@@ -25,7 +25,7 @@ Somente a porta da API é exposta à rede. Banco, cache e ferramentas de observa
 
 ```
 POST /cadastro
-  → valida se telefone/e-mail já existem (qualquer conta, ativa ou não)
+  → valida se o e-mail já existe (qualquer conta, ativa ou não)
   → grava o personal com usuario_ativo = false
   → verifica o cooldown de envio no Redis (síncrono, devolve 429 se ainda estiver ativo)
   → enfileira o envio do e-mail (TaskIQ) e responde imediatamente
@@ -35,6 +35,25 @@ GET /confirmar-email?token=...
 ```
 
 O envio do e-mail é assíncrono para não prender a resposta HTTP na conexão SMTP. O que **não** é assíncrono é a verificação de cooldown: ela roda ainda dentro da requisição, para que o usuário receba o erro 429 na hora.
+
+### Cadastro de aluno e verificação do telefone
+
+```
+POST /alunos
+  → grava o aluno e faz o commit (o cadastro nunca depende do WhatsApp)
+  → envia o template de boas-vindas, de forma síncrona
+  → a resposta da Meta diz se o número recebe WhatsApp:
+       aceito  → telefone_verificado = true
+       recusado por causa do destinatário → telefone_verificado = false
+       falha de rede, token ou template   → telefone_verificado = null
+  → devolve o resultado para o app avisar o personal na hora
+```
+
+Esse envio é **síncrono, e não enfileirado**, porque o personal precisa do resultado enquanto ainda está na tela — é o momento em que ele corrige um dígito errado. A regra geral do projeto é: vai para a fila aquilo cujo resultado o chamador não precisa ouvir (como o e-mail de confirmação); fica síncrono aquilo que ele precisa saber agora.
+
+Não existe endpoint na Cloud API para consultar se um número tem WhatsApp — a verificação **é** a tentativa de envio. E como o aluno nunca escreveu para o bot, o primeiro contato precisa ser um template aprovado pela Meta. Por isso o template é útil por si só: avisa o aluno de que o serviço existe e valida o número de uma vez.
+
+`null` nunca deve ser tratado como número inválido: significa apenas que não deu para concluir nada.
 
 ### Reagendamento solicitado pelo aluno
 
@@ -79,13 +98,13 @@ Personal ──┬──< Alunos ──────────< ParticipanteAul
 | Tabela | Descrição |
 |---|---|
 | `personal` | Conta do personal trainer. Guarda credenciais, `push_token` do dispositivo e os campos de controle `usuario_ativo`, `email_verificado` e `token_version`. |
-| `alunos` | Alunos de um personal. Nome e telefone são únicos **por personal** (dois personais podem ter alunos homônimos). |
+| `alunos` | Alunos de um personal. Nome e telefone são únicos **por personal** (dois personais podem ter alunos homônimos). `telefone_verificado` guarda se o número recebe WhatsApp; `NULL` significa que ainda não foi possível confirmar. |
 | `agendamentos_fixos` | Aula fixa semanal: dia da semana, horário de início e fim e capacidade máxima. Único por personal + dia + horário de início. |
 | `alunos_participantes_da_aula` | Liga alunos às aulas fixas (relação muitos-para-muitos). |
 | `solicitacoes_mudanca` | Pedido de reagendamento feito pelo aluno. Guarda a aula original, os novos horários, o motivo, o status e o prazo de expiração. |
 | `notificacoes` | Histórico das notificações do personal, com marcação de leitura. Serve como fonte da central de notificações no app. |
 
-**Exclusão de conta é lógica, não física.** Ao confirmar a exclusão, o registro permanece no banco (preservando o histórico de alunos e aulas), mas `usuario_ativo` vira `false` e o telefone e o e-mail são anonimizados — liberando esses dados para um cadastro futuro sem que a conta antiga seja reaproveitada por outra pessoa.
+**Exclusão de conta é lógica, não física.** Ao confirmar a exclusão, o registro permanece no banco (preservando o histórico de alunos e aulas), mas `usuario_ativo` vira `false` e o e-mail é anonimizado — liberando aquele endereço para um cadastro futuro sem que a conta antiga seja reaproveitada por outra pessoa.
 
 **Invalidação de sessão.** O campo `token_version` é incrementado na troca de senha e na exclusão da conta. Como o valor é gravado dentro do JWT, qualquer token emitido antes deixa de ser aceito imediatamente, sem precisar de blacklist.
 

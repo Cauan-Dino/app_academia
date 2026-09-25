@@ -150,16 +150,20 @@ class ChatBotOptionsService:
 
         
 
-    def resposta_opcao_2_(
-        self
+    async def resposta_opcao_2_(
+        self,
+        telefone_aluno: str
     ) -> str:
         """Retorna a primeira pergunta do reagendamento e a instrução para sair."""
+        aulas_cadastradas = await self.resposta_opcao_1_consultar_aulas(telefone_aluno=telefone_aluno)
         return (
             "Vamos solicitar o reagendamento da sua aula! 😊\n"
             "Vou pedir uma informação por vez.\n\n"
             "Primeiro, qual é a data e o horário de início "
             "da aula que você deseja mudar?\n\n"
             "Responda neste formato: 14/09/2026 às 08:00\n\n"
+            f"Essas são suas aulas cadastradas:\n\n"
+            f'{aulas_cadastradas}\n\n'
             "Digite 0 pra sair da conversa"
         )
 

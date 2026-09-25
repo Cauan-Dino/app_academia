@@ -34,24 +34,3 @@ logger.info(
         'origem': 'etc'
     }
 )
-
-# Enviar log pro app.log e nao pro elasticsearch
-# configurar de quanto em quanto deve o logstash deve enviar os logs pro elasticsearch
-# configurar pra enviar logs assim logger.info("Busca concluída", extra={'endpoint': '/pokemon', 'origem': 'cache'})
-
-# Enviar log pro app.log e nao pro elasticsearch
-# configurar de quanto em quanto deve o logstash deve enviar os logs pro elasticsearch
-# configurar pra enviar logs assim logger.info("Busca concluída", extra={'endpoint': '/pokemon', 'origem': 'cache'})
-
-# Enviar log pro app.log e nao pro elasticsearch
-# configurar de quanto em quanto deve o logstash deve enviar os logs pro elasticsearch
-# configurar pra enviar logs assim logger.info("Busca concluída", extra={'endpoint': '/pokemon', 'origem': 'cache'})
-
-# Enviar log pro app.log e nao pro elasticsearch
-# configurar de quanto em quanto deve o logstash deve enviar os logs pro elasticsearch
-# configurar pra enviar logs assim logger.info("Busca concluída", extra={'endpoint': '/pokemon', 'origem': 'cache'})
-
-# Enviar log pro app.log e nao pro elasticsearch
-# configurar de quanto em quanto deve o logstash deve enviar os logs pro elasticsearch
-# configurar pra enviar logs assim logger.info("Busca concluída", extra={'endpoint': '/pokemon', 'origem': 'cache'})
-

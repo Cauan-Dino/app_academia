@@ -13,12 +13,13 @@ class NotificacaoService:
         self.db = db
         self.redis_client = redis_client
 
-    async def _disparar_a_notificaca_pro_celular_do_personal(
+    async def disparar_a_notificaca_pro_celular_do_personal(
         self,
         push_token: str, 
         title: str, 
         body: str, 
-        data: dict = None
+        data: dict = None,
+        propagar_erro: bool = False,
     ) -> None:
         """
         Envia uma push notification ao celular do personal via API da Expo.
@@ -38,10 +39,9 @@ class NotificacaoService:
                 response.raise_for_status()
                 result = response.json()
                 ticket = result.get('data', {})
-                if ticket.get('status') == 'error':
-                    logger.warning(
-                        'Expo recusou a notificação: %s',
-                        ticket.get('message'),
+                if ticket.get("status") != "ok":
+                    raise RuntimeError(
+                        "A Expo não confirmou a aceitação do push."
                     )
 
         except Exception:
@@ -49,6 +49,8 @@ class NotificacaoService:
                 'Não foi possível enviar a notificação pro personal',
                 exc_info=False
             )
+            if propagar_erro:
+                raise
 
 
     async def _verifica_se_personal_excluiu_a_conta(
@@ -119,7 +121,7 @@ class NotificacaoService:
         personal = await self._verifica_se_personal_excluiu_a_conta(notificacao.personal_id)
         if personal is None or not personal.push_token:
             return
-        await self._disparar_a_notificaca_pro_celular_do_personal(
+        await self.disparar_a_notificaca_pro_celular_do_personal(
             push_token=personal.push_token,
             title=notificacao.titulo,
             body=notificacao.mensagem,

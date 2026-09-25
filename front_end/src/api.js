@@ -2,6 +2,7 @@ import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
 export const API_URL = (process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/$/, '');
+const IS_NGROK_TUNNEL = /^https:\/\/[^/]+\.ngrok-free\.(dev|app)(?:\/|$)/i.test(API_URL);
 
 const ACCESS_KEY = 'academia_access_token';
 const REFRESH_KEY = 'academia_refresh_token';
@@ -103,6 +104,7 @@ export async function getSessionEmail() {
 function errorMessage(body, fallback) {
   if (typeof body?.detail === 'string') return body.detail;
   if (Array.isArray(body?.detail)) return body.detail[0]?.msg || fallback;
+  if (typeof body?.detail?.message === 'string') return body.detail.message;
   return body?.message || fallback;
 }
 
@@ -114,6 +116,7 @@ async function rawRequest(path, options = {}, token) {
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
+        ...(IS_NGROK_TUNNEL ? { 'ngrok-skip-browser-warning': 'true' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...options.headers,
       },
@@ -126,6 +129,7 @@ async function rawRequest(path, options = {}, token) {
   if (!response.ok) {
     const error = new Error(errorMessage(body, 'Não foi possível concluir a solicitação.'));
     error.status = response.status;
+    error.detail = body?.detail;
     throw error;
   }
   return body;
@@ -179,6 +183,12 @@ export const api = {
   deleteAccount: (senha, confirmar_senha) => request('/deletar-conta', { method: 'POST', body: JSON.stringify({ senha, confirmar_senha }) }, true),
   resendDeleteEmail: () => request('/deletar-conta/reenviar-email', { method: 'POST' }, true),
   updatePushToken: (push_token) => request('/personal/push-token', { method: 'PATCH', body: JSON.stringify({ push_token }) }, true),
+
+  listNotifications: () => request('/notificacoes', {}, true),
+  deleteNotification: (id) => request(`/notificacoes/${id}`, { method: 'DELETE' }, true),
+  respondToNotification: (id, status) => request(`/notificacoes/${id}/reagendamento`, {
+    method: 'PATCH', body: JSON.stringify({ status }),
+  }, true),
 
   listStudents: (nome_aluno) => request(`/alunos${queryString({ nome_aluno })}`, {}, true),
   getStudent: (alunoId) => request(`/alunos/${alunoId}`, {}, true),

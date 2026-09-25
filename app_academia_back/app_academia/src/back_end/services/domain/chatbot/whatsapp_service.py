@@ -13,6 +13,12 @@ import httpx2
 from back_end.core.logging.logs_settings import logger
 import json
 
+# Códigos em que a Meta recusa o envio por causa do destinatário: o número não
+# recebe WhatsApp. Outros códigos (token, template, limite) não dizem nada sobre
+# o número e são registrados no log para que esta lista possa ser ajustada.
+CODIGOS_DESTINATARIO_INVALIDO = {131026}
+
+
 class WhatsappService:
     """Valida a origem dos eventos e recebe ou envia mensagens de texto."""
         
@@ -159,6 +165,93 @@ class WhatsappService:
 
             return response.json()
 
+    async def enviar_template(
+        self,
+        telefone: str,
+        nome_template: str,
+        parametros: dict[str, str],
+        idioma: str = "pt_BR",
+    ) -> bool | None:
+        """Envia um template aprovado e informa se o número recebe WhatsApp.
+
+        Retorna True quando a Meta aceita o envio, False quando ela recusa por
+        causa do destinatário e None quando não dá para concluir nada (falha de
+        rede, credencial inválida, template inexistente). None nunca deve ser
+        tratado como número inválido.
+        """
+        url = (
+            f"https://graph.facebook.com/"
+            f"{settings.WHATSAPP_API_VERSION}/"
+            f"{settings.PHONE_NUMBER_ID}/messages"
+        )
+
+        headers = {
+            "Authorization": (
+                "Bearer "
+                + settings.WHATSAPP_ACCESS_TOKEN.get_secret_value()
+            ),
+            "Content-Type": "application/json",
+        }
+
+        payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": telefone,
+            "type": "template",
+            "template": {
+                "name": nome_template,
+                "language": {"code": idioma},
+                "components": [
+                    {
+                        "type": "body",
+                        # A Meta exige variáveis nomeadas: os nomes precisam ser
+                        # idênticos aos declarados no template aprovado.
+                        "parameters": [
+                            {"type": "text", "parameter_name": nome, "text": valor}
+                            for nome, valor in parametros.items()
+                        ],
+                    }
+                ],
+            },
+        }
+
+        try:
+            async with httpx2.AsyncClient(timeout=10.0) as client:
+                response = await client.post(url=url, headers=headers, json=payload)
+        except Exception:
+            logger.warning(
+                "Não foi possível contatar a Meta para enviar o template",
+                exc_info=False,
+            )
+            return None
+
+        if not response.is_error:
+            return True
+
+        try:
+            erro_meta = response.json().get("error", {})
+        except ValueError:
+            erro_meta = {}
+
+        codigo = erro_meta.get("code")
+        logger.warning(
+            "Meta recusou o envio do template",
+            extra={
+                "status_code": response.status_code,
+                "meta_code": codigo,
+                "meta_message": erro_meta.get("message"),
+                "template": nome_template,
+            },
+            exc_info=False,
+        )
+
+        if codigo in CODIGOS_DESTINATARIO_INVALIDO:
+            return False
+
+        # Qualquer outro motivo (token, template, limite) não diz nada sobre o número.
+        return None
+
+
     async def processar_mensagem(
         self,
         request: Request,
@@ -205,11 +298,11 @@ class WhatsappService:
                         .strip()
                         .casefold()
                     )
-
+                    telefone_teste = '5598987808745'
                     if telefone:
                         return {
                             "texto": texto,
-                            "telefone": telefone,
+                            "telefone": telefone_teste,
                         }
 
         # É um evento de status ou outro evento não processado.

@@ -55,7 +55,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=origens_permitidas,
     allow_methods=["GET", "POST", "PATCH", "DELETE"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_headers=["Authorization", "Content-Type", "ngrok-skip-browser-warning"],
 )
 
 app.include_router(cadastro_personal)

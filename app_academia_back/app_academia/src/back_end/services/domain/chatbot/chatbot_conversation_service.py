@@ -96,7 +96,7 @@ class ChatbotConversationService:
                 )
                 
             elif texto_aluno == '2':
-                texto = self.chatbot_options_service.resposta_opcao_2_()
+                texto = await self.chatbot_options_service.resposta_opcao_2_(telefone_aluno=telefone_aluno)
                 await self.whatzap_service.enviar_mensagem_texto(
                     texto=texto,
                     telefone=telefone_aluno

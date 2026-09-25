@@ -10,6 +10,13 @@ services:
       - redis-server
       - --requirepass
       - ${REDIS_PASSWORD}
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - always
+
+    volumes:
+      - redis_data:/data
 
     ports:
       - "127.0.0.1:6379:6379"
@@ -29,6 +36,7 @@ services:
   mysql:
     image: mysql:8.0
     container_name: mysql
+    restart: unless-stopped
 
     ports:
       - "127.0.0.1:3307:3306"
@@ -78,7 +86,7 @@ services:
       - ./logs:/logs
 #      - ./banco_de_dados.db:/app/banco_de_dados.db
 
-    command: uvicorn back_end.main:app --host 0.0.0.0 --port 8000
+    command: uvicorn back_end.main:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped 
   
   elasticsearch:
@@ -159,6 +167,9 @@ services:
       taskiq worker
       back_end.services.infra.filas.taskiq.taskiq_app:broker
       back_end.services.infra.filas.tasks.email_task
+      back_end.services.infra.filas.tasks.lembrete_aula_task
+      --ack-type when_executed
+      --max-async-tasks 10
 
     restart: unless-stopped
 
@@ -185,11 +196,13 @@ services:
       taskiq scheduler
       back_end.services.infra.filas.taskiq.taskiq_app:scheduler
       back_end.services.infra.filas.tasks.email_task
-      --update-interval 1
+      back_end.services.infra.filas.tasks.lembrete_aula_task
+      --update-interval 5
       --loop-interval 1
 
     restart: unless-stopped
 
 volumes:
+  redis_data:
   esdata:
   mysql_data:

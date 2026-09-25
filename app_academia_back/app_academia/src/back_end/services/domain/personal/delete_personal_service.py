@@ -86,12 +86,11 @@ class DeletePersonalAcountService:
         usuario.usuario_ativo = False
         usuario.email_verificado = False
         usuario.email = None
-        usuario.telefone = f'del:{usuario.id}'
         usuario.token_version += 1 # Invalida o access e refresh token atuais
 
         try:
             await self.db.commit()
-        except:
+        except Exception:
             await self.db.rollback()
             raise HTTPException(status_code=500, detail='Ocorreu um erro desconhecido.')
 
