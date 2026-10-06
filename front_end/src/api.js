@@ -1,7 +1,11 @@
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
-export const API_URL = (process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/$/, '');
+const urlConfigurada = process.env.EXPO_PUBLIC_API_URL;
+if (!urlConfigurada && !__DEV__) {
+  throw new Error('EXPO_PUBLIC_API_URL não foi configurada no build.');
+}
+export const API_URL = (urlConfigurada || 'http://localhost:8000').replace(/\/$/, '');
 const IS_NGROK_TUNNEL = /^https:\/\/[^/]+\.ngrok-free\.(dev|app)(?:\/|$)/i.test(API_URL);
 
 const ACCESS_KEY = 'academia_access_token';
@@ -135,7 +139,21 @@ async function rawRequest(path, options = {}, token) {
   return body;
 }
 
-async function refreshAccessToken() {
+// O back-end invalida o refresh token depois do primeiro uso. Se várias
+// requisições receberem 401 juntas, todas aguardam esta mesma renovação
+// em vez de cada uma gastar o mesmo refresh token (só a primeira venceria).
+let refreshEmAndamento = null;
+
+function refreshAccessToken() {
+  if (!refreshEmAndamento) {
+    refreshEmAndamento = renovarTokens().finally(() => {
+      refreshEmAndamento = null;
+    });
+  }
+  return refreshEmAndamento;
+}
+
+async function renovarTokens() {
   const refreshToken = await storage.getItem(REFRESH_KEY);
   if (!refreshToken || tokenExpired(refreshToken)) {
     await expireSession();
@@ -161,7 +179,10 @@ export async function request(path, options = {}, authenticated = false) {
     return await rawRequest(path, options, accessToken);
   } catch (error) {
     if (error.status !== 401) throw error;
-    accessToken = await refreshAccessToken();
+    // Se outra requisição já renovou enquanto esta estava em andamento,
+    // usa o token novo em vez de renovar de novo.
+    const tokenAtual = await storage.getItem(ACCESS_KEY);
+    accessToken = tokenAtual && tokenAtual !== accessToken ? tokenAtual : await refreshAccessToken();
     return rawRequest(path, options, accessToken);
   }
 }

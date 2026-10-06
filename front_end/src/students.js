@@ -81,8 +81,13 @@ export function StudentFormScreen({ student, onBack, onSaved }) {
     setBusy(true);
     setError('');
     try {
-      if (editing) await api.updateStudent(student.id, { nome, telefone });
-      else {
+      if (editing) {
+        // Envia só o que mudou: o telefone no payload faz o back-end verificar o número.
+        const mudancas = {};
+        if (nome !== student.nome) mudancas.nome = nome;
+        if (telefone !== student.telefone) mudancas.telefone = telefone;
+        if (Object.keys(mudancas).length) await api.updateStudent(student.id, mudancas);
+      } else {
         const resposta = await api.createStudent({ nome, telefone });
         if (resposta?.telefone_verificado === false) {
           Alert.alert('Confira o telefone', resposta.message);
