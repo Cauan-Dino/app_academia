@@ -1,30 +1,35 @@
+# Os padrões com **/ valem em qualquer pasta do contexto;
+# sem isso, só a raiz (app_academia_back/) seria ignorada.
+
 # Ambiente virtual e cache Python
-__pycache__/
-*.pyc
-.venv/
-venv/
+**/__pycache__/
+**/*.pyc
+**/.venv/
+**/venv/
+**/.pytest_cache/
 
 # Segredos e config local
-.env
-.env.*
+**/.env
+**/.env.*
 
 # Git
 .git/
 .gitignore
 
 # Logs e dados locais
-logs/
-*.log
-*.db
+**/logs/
+**/*.log
+**/*.db
 
 # Pastas de teste/experimentação que você já ignora no git
 z/
 
 # Editor / SO
-.vscode/
-.idea/
-.DS_Store
+**/.vscode/
+**/.idea/
+**/.DS_Store
 
 # Docker
 docker-compose.yml
+docker-compose.override.yml
 .dockerignore

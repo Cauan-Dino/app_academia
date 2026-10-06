@@ -1,5 +1,4 @@
-from pydantic import BaseModel,EmailStr,Field
-
+from pydantic import BaseModel,EmailStr,Field, field_validator
 # Schema que cadastra o personal
 class CadastroPersonal(BaseModel):
     nome: str
@@ -7,12 +6,26 @@ class CadastroPersonal(BaseModel):
     senha: str = Field(...,min_length=6,max_length=30)
     confirmar_senha: str = Field(...,min_length=6,max_length=30)
 
+    @field_validator('email', mode='before')
+    @classmethod
+    def normalizar_email(cls, valor):
+        if isinstance(valor, str):
+            return valor.strip().lower()
+        return valor
+
 
 # Schema logar personal
 class LoginPersonal(BaseModel):
     email: EmailStr
     senha: str
 
+    @field_validator('email', mode='before')
+    @classmethod
+    def normalizar_email(cls, valor):
+        if isinstance(valor, str):
+            return valor.strip().lower()
+        return valor
+    
 # Schema pra Deletar a conta do Personal
 class DeletarContaPersonal(BaseModel):
     senha: str

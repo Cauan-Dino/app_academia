@@ -1,6 +1,6 @@
 from jose import JWTError,jwt,ExpiredSignatureError
 from datetime import datetime,timezone,timedelta
-import os
+from back_end.services.infra.config.settings import settings
 from fastapi import Depends,APIRouter,HTTPException
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,12 +18,15 @@ from back_end.auth.usuario_auth import buscar_usuario_autorizado
 oauth = OAuth2PasswordBearer(tokenUrl='/login-form')
 
 router = APIRouter(tags=['JWt Token'])
+# Só incluído no app quando a documentação está ligada (HABILITAR_DOCS=true):
+# o /login-form serve ao botão "Authorize" do Swagger e não tem o rate limit do /login.
+router_docs = APIRouter(tags=['JWt Token'])
 
 
-SECRET_KEY = os.getenv('SECRET_KEY')
-TEMPO_REFRESH_TOKEN = int(os.getenv('TEMPO_REFRESH_TOKEN'))
-TEMPO_ACCESS_TOKEN = int(os.getenv('TEMPO_ACCESS_TOKEN'))
-ALGORITHM = os.getenv('ALGORITHM')
+SECRET_KEY = settings.SECRET_KEY.get_secret_value()
+TEMPO_REFRESH_TOKEN = settings.TEMPO_REFRESH_TOKEN
+TEMPO_ACCESS_TOKEN = settings.TEMPO_ACCESS_TOKEN
+ALGORITHM = settings.ALGORITHM
 
 
 async def criar_refresh_token(
@@ -204,7 +207,7 @@ async def gerar_access_token(
 
 
 
-@router.post('/login-form')
+@router_docs.post('/login-form')
 async def login_form(
     formulario: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(sessao_db)

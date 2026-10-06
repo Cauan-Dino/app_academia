@@ -1,0 +1,25 @@
+# Ajustes de DESENVOLVIMENTO, aplicados por cima do docker-compose.yml.
+# O Compose carrega este arquivo sozinho quando ele está na mesma pasta.
+# Em produção, ignore-o subindo só a base:
+#   docker compose -f docker-compose.yml up -d --build
+
+services:
+  app:
+    # Monta o código da sua máquina por cima do que está na imagem.
+    volumes:
+      - ./app_academia/src/back_end:/app/back_end
+      - /app/back_end/.venv
+    # Igual ao da base, mais o --reload (reinicia a API ao salvar um arquivo).
+    command: uvicorn back_end.main:app --host 0.0.0.0 --port 8000 --reload --proxy-headers --forwarded-allow-ips=*
+
+  # O worker e o scheduler não recarregam sozinhos: depois de editar
+  # services/infra/filas/, rode "docker compose restart taskiq_worker".
+  taskiq_worker:
+    volumes:
+      - ./app_academia/src/back_end:/app/back_end
+      - /app/back_end/.venv
+
+  taskiq_scheduler:
+    volumes:
+      - ./app_academia/src/back_end:/app/back_end
+      - /app/back_end/.venv

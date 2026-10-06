@@ -12,6 +12,8 @@ from back_end.services.infra.config.settings import settings
 import httpx2 
 from back_end.core.logging.logs_settings import logger
 import json
+from back_end.services.infra.utils.normalizar_telefone import normalizar_telefone_recebido
+from back_end.services.infra.http.cliente_http import cliente_http
 
 # Códigos em que a Meta recusa o envio por causa do destinatário: o número não
 # recebe WhatsApp. Outros códigos (token, template, limite) não dizem nada sobre
@@ -132,38 +134,39 @@ class WhatsappService:
             },
         }
 
-        async with httpx2.AsyncClient(timeout=10.0) as client:
-            response = await client.post(
-                url=url,
-                headers=headers,
-                json=payload,
-            )
+        response = await cliente_http.post(
+            url=url,
+            headers=headers,
+            json=payload,
+        )
 
-            if response.is_error:
-                try:
-                    erro_meta = response.json().get("error", {})
+        if response.is_error:
+            try:
+                erro_meta = response.json().get("error", {})
 
-                    logger.error(
-                        "Meta recusou o envio da mensagem",
-                        extra={
-                            "status_code": response.status_code,
-                            "meta_code": erro_meta.get("code"),
-                            "meta_subcode": erro_meta.get("error_subcode"),
-                            "meta_type": erro_meta.get("type"),
-                            "meta_message": erro_meta.get("message"),
-                        },
-                        exc_info=False,
-                    )
-                except ValueError:
-                    logger.error(
-                        "Meta retornou uma resposta não JSON",
-                        extra={"status_code": response.status_code},
-                        exc_info=False,
-                    )
+                logger.error(
+                    "Meta recusou o envio da mensagem",
+                    extra={
+                        "status_code": response.status_code,
+                        "telefone_destino": telefone,
+                        "phone_number_id": settings.PHONE_NUMBER_ID,
+                        "meta_code": erro_meta.get("code"),
+                        "meta_subcode": erro_meta.get("error_subcode"),
+                        "meta_type": erro_meta.get("type"),
+                        "meta_message": erro_meta.get("message"),
+                    },
+                    exc_info=False,
+                )
+            except ValueError:
+                logger.error(
+                    "Meta retornou uma resposta não JSON",
+                    extra={"status_code": response.status_code, "telefone_destino": telefone},
+                    exc_info=False,
+                )
 
-            response.raise_for_status()
+        response.raise_for_status()
 
-            return response.json()
+        return response.json()
 
     async def enviar_template(
         self,
@@ -216,8 +219,7 @@ class WhatsappService:
         }
 
         try:
-            async with httpx2.AsyncClient(timeout=10.0) as client:
-                response = await client.post(url=url, headers=headers, json=payload)
+            response = await cliente_http.post(url=url, headers=headers, json=payload)
         except Exception:
             logger.warning(
                 "Não foi possível contatar a Meta para enviar o template",
@@ -241,6 +243,7 @@ class WhatsappService:
                 "meta_code": codigo,
                 "meta_message": erro_meta.get("message"),
                 "template": nome_template,
+                "telefone_destino": telefone,
             },
             exc_info=False,
         )
@@ -298,11 +301,10 @@ class WhatsappService:
                         .strip()
                         .casefold()
                     )
-                    telefone_teste = '5598987808745'
                     if telefone:
                         return {
                             "texto": texto,
-                            "telefone": telefone_teste,
+                            "telefone": normalizar_telefone_recebido(telefone),
                         }
 
         # É um evento de status ou outro evento não processado.

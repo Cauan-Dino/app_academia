@@ -6,9 +6,11 @@ from back_end.services.infra.redis_service.redis_config import redis_client as r
 from back_end.services.infra.redis_service.notificacao_cache import invalidar_cache_notificacoes
 from redis.asyncio import Redis
 from .visualizar_notificacao_service import agora_utc
+from back_end.services.infra.http.cliente_http import cliente_http
 import httpx2
 
 class NotificacaoService:
+
     def __init__(self, db: AsyncSession, redis_client: Redis = redis_padrao):
         self.db = db
         self.redis_client = redis_client
@@ -25,29 +27,32 @@ class NotificacaoService:
         Envia uma push notification ao celular do personal via API da Expo.
         """
         try:
-            async with httpx2.AsyncClient() as client:
-                response = await client.post(
-                    "https://exp.host/--/api/v2/push/send",
-                    json={
-                        'to': push_token,
-                        'title': title,
-                        'body': body,
-                        'data': data or {}
-                    }
+            response = await cliente_http.post(
+                "https://exp.host/--/api/v2/push/send",
+                json={
+                    'to': push_token,
+                    'title': title,
+                    'body': body,
+                    'data': data or {}
+                }
+            )
+
+            response.raise_for_status()
+            result = response.json()
+            ticket = result.get('data', {})
+            if ticket.get("status") != "ok":
+                raise RuntimeError(
+                    "A Expo não confirmou a aceitação do push."
                 )
 
-                response.raise_for_status()
-                result = response.json()
-                ticket = result.get('data', {})
-                if ticket.get("status") != "ok":
-                    raise RuntimeError(
-                        "A Expo não confirmou a aceitação do push."
-                    )
-
-        except Exception:
+        except Exception as erro:
             logger.warning(
                 'Não foi possível enviar a notificação pro personal',
-                exc_info=False
+                extra={
+                    'push_token_prefixo': push_token[:25],
+                    'tipo_erro': type(erro).__name__,
+                },
+                exc_info=False,
             )
             if propagar_erro:
                 raise

@@ -10,7 +10,7 @@ load_dotenv(dotenv_path=BASE_DIR / ".env")
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
-from back_end.auth.jwt_token import router as jwt_router
+from back_end.auth.jwt_token import router as jwt_router, router_docs as jwt_docs_router
 from back_end.services.infra.database.database import engine
 from back_end.services.infra.filas.taskiq.taskiq_app import broker
 from back_end.routers.personal.cadastro_personal import router as cadastro_personal
@@ -24,6 +24,7 @@ from back_end.routers.agendamento.cadastrar_aula import router as cadastrar_aula
 from back_end.routers.chatbot.webhook import router as webhook
 from back_end.routers.notificacao.salvar_push_token import router as push_token_router 
 from back_end.routers.notificacao.notificacoes import router as notificacoes_router
+from back_end.services.infra.http.cliente_http import cliente_http
 
 @asynccontextmanager
 async def lifepan(app: FastAPI):
@@ -35,10 +36,23 @@ async def lifepan(app: FastAPI):
     await engine.dispose()
     await redis_client.close()  # fecha a conexão Redis de forma organizada
     await broker.shutdown()
+    await cliente_http.aclose()
     
     # FECHAR A CONEXAO COM O SERVICO VALE PRA TODOS OS SERVICOS | FECHAR A CONEXAO COM O SERVICO VALE PRA TODOS OS SERVICOS
 
-app = FastAPI(lifespan=lifepan)
+HABILITAR_DOCS = os.getenv("HABILITAR_DOCS", "false").lower() == "true"
+
+app = FastAPI(
+    lifespan=lifepan,
+    docs_url='/docs' if HABILITAR_DOCS else None,
+    redoc_url=None,
+    openapi_url='/openapi.json' if HABILITAR_DOCS else None,
+    )
+
+# Endpoint pra verificar se Serviço app ta vivo
+@app.get("/health", include_in_schema=False)
+async def health():
+    return {"status": "ok"}
 
 from back_end.core.http import exception_handlers  
 from back_end.core.http import middleware  
@@ -61,6 +75,9 @@ app.add_middleware(
 app.include_router(cadastro_personal)
 app.include_router(login_personal)
 app.include_router(jwt_router)
+# /login-form só existe junto com a documentação: ele não tem o rate limit do /login.
+if HABILITAR_DOCS:
+    app.include_router(jwt_docs_router)
 app.include_router(deletar_conta_personal)
 app.include_router(update_personal)
 app.include_router(alunos_router)

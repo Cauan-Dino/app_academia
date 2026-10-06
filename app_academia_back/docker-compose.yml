@@ -1,7 +1,16 @@
+# Rotação do que cada container imprime (o Docker guarda tudo em arquivo e,
+# sem limite, isso cresce até encher o disco): até 3 arquivos de 10 MB por container.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   redis:
     image: redis:7.2-alpine
     container_name: redis
+    logging: *logging
 
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
@@ -29,13 +38,14 @@ services:
           "CMD-SHELL",
           "REDISCLI_AUTH=$${REDIS_PASSWORD} redis-cli ping"
         ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      interval: 10s  # de quanto em quanto tempo testar
+      timeout: 5s # quanto esperar cada teste
+      retries: 5 # falhas seguidas antes de virar unhealthy
   
   mysql:
     image: mysql:8.0
     container_name: mysql
+    logging: *logging
     restart: unless-stopped
 
     ports:
@@ -64,34 +74,52 @@ services:
   app:
     build: .
     container_name: main_app
+    logging: *logging
 
+    # Só a própria máquina acessa a API (ngrok ou proxy reverso). Isso é o que
+    # torna seguro o --forwarded-allow-ips=* do command abaixo.
     ports:
-      - "8000:8000"
-    
+      - "127.0.0.1:8000:8000"
+
     depends_on:
       redis:
         condition: service_healthy
       mysql:
         condition: service_healthy
-    
+
     env_file:
       - .env
-    
+
     environment: # A variável definida em environment sobrescreve o valor vindo de env_file dentro do contêiner.
       LOG_FILE_PATH: /logs/app.log
-    
+
+    # O código vem da imagem. Em desenvolvimento, o docker-compose.override.yml
+    # monta a pasta do código por cima e liga o --reload.
     volumes:
-      - ./app_academia/src/back_end:/app/back_end
-      - /app/back_end/.venv
-      - ./logs:/logs
+      - app_logs:/logs
 #      - ./banco_de_dados.db:/app/banco_de_dados.db
 
-    command: uvicorn back_end.main:app --host 0.0.0.0 --port 8000 --reload
-    restart: unless-stopped 
+    healthcheck:
+      test: [
+        "CMD", 
+        "python", "-c",
+        "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=3).status == 200 else 1)"
+      ]
+      interval: 1m30s # de quanto em quanto tempo testar
+      timeout: 30s # quanto esperar cada teste
+      retries: 5 # falhas seguidas antes de virar unhealthy
+      start_period: 30s # tempo de tolerância na inicialização
+
+    # --proxy-headers + --forwarded-allow-ips: usa o IP real do cliente enviado
+    # pelo ngrok/proxy no X-Forwarded-For (necessário para o rate limit de login).
+    command: uvicorn back_end.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=*
+    restart: unless-stopped
   
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
     container_name: elasticsearch
+    logging: *logging
+    restart: unless-stopped
 
     environment:
       - discovery.type=single-node
@@ -116,21 +144,43 @@ services:
       timeout: 5s
       retries: 10
 
+  # Roda uma vez a cada "up" e termina: cria a política que apaga
+  # os índices de log com mais de 30 dias (ver o script).
+  elasticsearch_setup:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: elasticsearch_setup
+    logging: *logging
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    volumes:
+      - ./elasticsearch/configurar_retencao.sh:/configurar_retencao.sh:ro
+    entrypoint: ["sh", "/configurar_retencao.sh"]
+    restart: "no"
+
   logstash:
     image: docker.elastic.co/logstash/logstash:8.11.0
     container_name: logstash
+    logging: *logging
+    restart: unless-stopped
 
     depends_on:
       elasticsearch:
         condition: service_healthy
+      # O volume app_logs herda o dono de /logs da imagem de quem o monta primeiro.
+      # A imagem do Logstash não tem essa pasta, então a API precisa montar antes.
+      app:
+        condition: service_started
 
     volumes:
       - ./logstash/logstash.conf:/usr/share/logstash/pipeline/logstash.conf
-      - ./logs:/logs:ro # Permite apenas a leitura dos arquivos
+      - app_logs:/logs:ro # Permite apenas a leitura dos arquivos
   
   kibana:
     image: docker.elastic.co/kibana/kibana:8.11.0
     container_name: kibana
+    logging: *logging
+    restart: unless-stopped
 
     ports:
       - "127.0.0.1:5601:5601"
@@ -146,6 +196,7 @@ services:
   taskiq_worker:
     build: .
     container_name: taskiq_worker
+    logging: *logging
     env_file:
       - .env
 
@@ -153,9 +204,7 @@ services:
       LOG_FILE_PATH: /logs/taskiq_worker.log
 
     volumes:
-      - ./app_academia/src/back_end:/app/back_end
-      - /app/back_end/.venv
-      - ./logs:/logs
+      - app_logs:/logs
 
     depends_on:
       redis:
@@ -177,6 +226,7 @@ services:
   taskiq_scheduler:
     build: .
     container_name: taskiq_scheduler
+    logging: *logging
     env_file:
       - .env
 
@@ -184,9 +234,7 @@ services:
       LOG_FILE_PATH: /logs/taskiq_scheduler.log
 
     volumes:
-      - ./app_academia/src/back_end:/app/back_end
-      - /app/back_end/.venv
-      - ./logs:/logs
+      - app_logs:/logs
 
     depends_on:
       redis:
@@ -206,3 +254,4 @@ volumes:
   redis_data:
   esdata:
   mysql_data:
+  app_logs:

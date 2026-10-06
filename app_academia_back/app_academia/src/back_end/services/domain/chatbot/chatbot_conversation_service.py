@@ -8,6 +8,9 @@ from .chatbot_solicitacao_mudanca_aula_service import SolicitacaoReagendamentoAu
 from .utils_chatbot_service import UtilsChatbotService
 from redis.asyncio import Redis
 from fastapi import Response
+from back_end.core.logging.logs_settings import logger
+from sqlalchemy import select
+from back_end.services.infra.database.models import Alunos
 
 class ChatbotConversationService:
     """Direciona mensagens recebidas conforme a sessão e a opção escolhida."""
@@ -56,6 +59,17 @@ class ChatbotConversationService:
 
         telefone_aluno = resposta_usuario.get('telefone')
         texto_aluno = resposta_usuario.get('texto')
+
+        # Impede um aluno não cadastro de mandar de mensagem 
+        aluno = await self.db.scalar(
+            select(Alunos).where(Alunos.telefone == telefone_aluno)
+        )
+        if aluno is None:
+            logger.info(
+                "Mensagem de número não cadastrado",
+                extra={"telefone_prefixo": telefone_aluno[:6]},
+            )
+            return Response(status_code=200)
 
         # --- Envio de mensagens do bot -----------------------------
 
