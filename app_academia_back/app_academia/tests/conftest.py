@@ -11,7 +11,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 # Sobrescreve também configurações herdadas; o engine da aplicação não é utilizado.
 os.environ.update({
     "SQLALCHEMY_DATABASE_URL": "mysql+aiomysql://test:test@127.0.0.1/test_nao_utilizado",
-    "SECRET_KEY": "chave-apenas-para-testes",
+    # Os mínimos vêm do Settings: 32 caracteres nas chaves, 16 no pepper.
+    "SECRET_KEY": "chave-apenas-para-testes-sem-valor-real",
+    "EMAIL_TOKEN_SECRET_KEY": "chave-de-email-apenas-para-testes-local",
+    "PEPPER": "pepper-apenas-para-testes",
     "TEMPO_REFRESH_TOKEN": "1",
     "TEMPO_ACCESS_TOKEN": "5",
     "ALGORITHM": "HS256",

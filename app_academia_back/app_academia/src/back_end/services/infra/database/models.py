@@ -3,7 +3,7 @@ from sqlalchemy import ForeignKey, String, Enum as SQLEnum, Time, text, UniqueCo
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from back_end.services.infra.database.database import Base
 from enum import Enum
-from datetime import time
+from datetime import time, timezone
 
 class DiaDaSemana(str, Enum):
     SEGUNDA = "segunda"
@@ -20,7 +20,6 @@ class Personal(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     nome: Mapped[str] = mapped_column(String(100), nullable=False)
-    telefone: Mapped[str] = mapped_column(String(15), unique=True, nullable=False)
     email: Mapped[str | None] = mapped_column(String(100), unique=True,nullable=True)
     senha: Mapped[str] = mapped_column(String(255),nullable=False)
     usuario_ativo: Mapped[bool] = mapped_column(nullable=False, default=True, server_default=text("TRUE"))
@@ -61,6 +60,9 @@ class Alunos(Base):
         ),  
         nullable=False)
     telefone: Mapped[str] = mapped_column(String(15) ,nullable=False)
+
+    # None = ainda não foi possível confirmar se o número recebe WhatsApp.
+    telefone_verificado: Mapped[bool | None] = mapped_column(nullable=True)
 
     personal_id: Mapped[int] = mapped_column(ForeignKey('personal.id', name="fk_personal_id"), nullable=False)
 
@@ -324,6 +326,107 @@ class Notificacao(Base):
         DateTime,
         nullable=False,
         server_default=text("CURRENT_TIMESTAMP"),
+    )
+
+
+
+class StatusLembrete(str, Enum):
+    PENDENTE = "pendente"
+    PROCESSANDO = "processando"
+    ENVIADO = "enviado"
+    FALHOU = "falhou"
+    CANCELADO = "cancelado"
+
+
+class LembreteAula(Base):
+    __tablename__ = 'lembretes_aula'
+
+    __table_args__ = (
+        CheckConstraint(
+            'tentativas >= 0',
+            name='ck_lembrete_tentativas'
+        ),
+        CheckConstraint(
+            'programado_para < inicio_da_aula',
+            name='ck_lembrete_programacao'
+        ),
+        UniqueConstraint(
+            'personal_id',
+            'chave_ocorrencia',
+            name='uq_lembrete_personal_ocorrencia'
+        ),
+        CheckConstraint(
+            "status != 'enviado' OR enviado_em IS NOT NULL",
+            name="ck_lembrete_enviado_em",
+        ),
+        Index(
+            "ix_lembrete_status_programacao",
+            "status",
+            "programado_para",
+        ),
+    )
+
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    personal_id: Mapped[int] = mapped_column(
+        ForeignKey('personal.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+    )
+
+    aula_fixa_id: Mapped[int] = mapped_column(
+        ForeignKey('agendamentos_fixos.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+    )
+
+    solicitacao_id: Mapped[int | None] = mapped_column(
+        ForeignKey('solicitacoes_mudanca.id', ondelete='CASCADE'),
+        nullable=True
+    )
+
+    chave_ocorrencia: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False
+    )
+
+    inicio_da_aula: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+    )
+
+    programado_para: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False
+    )
+
+    status: Mapped[StatusLembrete] = mapped_column(
+        SQLEnum(
+            StatusLembrete,
+            values_callable=lambda enum: [
+                item.value for item in enum
+            ]
+        ),
+        nullable=False,
+        default=StatusLembrete.PENDENTE,
+        server_default=text("'pendente'")
+    )
+
+    tentativas: Mapped[int] = mapped_column(
+        default=0,
+        server_default=text("0")
+    )
+
+    enviado_em: Mapped[datetime | None] = mapped_column(
+        DateTime,
+        nullable=True
+    )
+
+    criado_em: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None)
     )
 
 # class EnvioSMS(Base):

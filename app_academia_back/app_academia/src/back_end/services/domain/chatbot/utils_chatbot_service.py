@@ -17,6 +17,10 @@ from back_end.schemas.chatbot_schemas import SessaoReagendamento
 
 FUSO_HORARIO_ACADEMIA = timezone(timedelta(hours=-3))
 
+# Tempo sem resposta do aluno até a sessão expirar, em segundos.
+TEMPO_SESSAO_MENU = 20 * 60  # conversa geral (menu)
+TEMPO_SESSAO_REAGENDAMENTO = 15 * 60  # etapas do reagendamento de aula
+
 class UtilsChatbotService:
     """Centraliza a formatação de datas e as operações de sessão no Redis."""
 
@@ -32,7 +36,7 @@ class UtilsChatbotService:
 
 
     async def _salvar_redis(self, telefone: str) -> None:
-        """Cria ou renova a sessão do menu por 30 segundos.
+        """Cria ou renova a sessão do menu por TEMPO_SESSAO_MENU (20 minutos).
 
         A chave ``chatbot:sessao:{telefone}`` recebe o valor ``menu`` na
         primeira gravação. Falhas geram uma HTTPException com status 500.
@@ -42,9 +46,9 @@ class UtilsChatbotService:
             redis_cache = await self.redis_client.get(chave_redis)
 
             if not redis_cache:
-                await self.redis_client.set(chave_redis, "menu", ex=30)
+                await self.redis_client.set(chave_redis, "menu", ex=TEMPO_SESSAO_MENU)
             else:
-                await self.redis_client.expire(chave_redis, 30)
+                await self.redis_client.expire(chave_redis, TEMPO_SESSAO_MENU)
 
             try:
                 logger.info("Sessão com o chatbot salva no redis")
@@ -81,7 +85,7 @@ class UtilsChatbotService:
         self,
         telefone_aluno: str,
     ) -> None:
-        """Renova uma sessão de reagendamento existente por 40 segundos.
+        """Renova uma sessão de reagendamento existente por TEMPO_SESSAO_REAGENDAMENTO (15 minutos).
 
         Não cria uma sessão ausente. Em caso de RedisError, registra a falha
         e tenta avisar o destinatário de teste configurado.
@@ -89,7 +93,7 @@ class UtilsChatbotService:
         try:
             await self.redis_client.expire(
                 f"chatbot:reagendamento:{telefone_aluno}:aula_original",
-                40,
+                TEMPO_SESSAO_REAGENDAMENTO,
             )
         except RedisError:
             logger.warning(
@@ -132,7 +136,7 @@ class UtilsChatbotService:
         telefone_aluno: str,
         sessao: dict,
     ) -> None:
-        """Grava o estado completo do reagendamento em JSON por 40 segundos.
+        """Grava o estado completo do reagendamento em JSON por TEMPO_SESSAO_REAGENDAMENTO (15 minutos).
 
         Substitui o estado anterior e renova sua expiração. Os valores da
         sessão devem ser serializáveis em JSON. Em caso de RedisError,
@@ -142,7 +146,7 @@ class UtilsChatbotService:
             await self.redis_client.set(
                 f"chatbot:reagendamento:{telefone_aluno}:aula_original",
                 json.dumps(sessao),
-                ex=40,
+                ex=TEMPO_SESSAO_REAGENDAMENTO,
             )
         except RedisError:
             logger.warning(

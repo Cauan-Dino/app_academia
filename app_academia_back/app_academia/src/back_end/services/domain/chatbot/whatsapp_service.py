@@ -12,6 +12,14 @@ from back_end.services.infra.config.settings import settings
 import httpx2 
 from back_end.core.logging.logs_settings import logger
 import json
+from back_end.services.infra.utils.normalizar_telefone import normalizar_telefone_recebido
+from back_end.services.infra.http.cliente_http import cliente_http
+
+# Códigos em que a Meta recusa o envio por causa do destinatário: o número não
+# recebe WhatsApp. Outros códigos (token, template, limite) não dizem nada sobre
+# o número e são registrados no log para que esta lista possa ser ajustada.
+CODIGOS_DESTINATARIO_INVALIDO = {131026}
+
 
 class WhatsappService:
     """Valida a origem dos eventos e recebe ou envia mensagens de texto."""
@@ -126,38 +134,126 @@ class WhatsappService:
             },
         }
 
-        async with httpx2.AsyncClient(timeout=10.0) as client:
-            response = await client.post(
-                url=url,
-                headers=headers,
-                json=payload,
+        response = await cliente_http.post(
+            url=url,
+            headers=headers,
+            json=payload,
+        )
+
+        if response.is_error:
+            try:
+                erro_meta = response.json().get("error", {})
+
+                logger.error(
+                    "Meta recusou o envio da mensagem",
+                    extra={
+                        "status_code": response.status_code,
+                        "telefone_destino": telefone,
+                        "phone_number_id": settings.PHONE_NUMBER_ID,
+                        "meta_code": erro_meta.get("code"),
+                        "meta_subcode": erro_meta.get("error_subcode"),
+                        "meta_type": erro_meta.get("type"),
+                        "meta_message": erro_meta.get("message"),
+                    },
+                    exc_info=False,
+                )
+            except ValueError:
+                logger.error(
+                    "Meta retornou uma resposta não JSON",
+                    extra={"status_code": response.status_code, "telefone_destino": telefone},
+                    exc_info=False,
+                )
+
+        response.raise_for_status()
+
+        return response.json()
+
+    async def enviar_template(
+        self,
+        telefone: str,
+        nome_template: str,
+        parametros: dict[str, str],
+        idioma: str = "pt_BR",
+    ) -> bool | None:
+        """Envia um template aprovado e informa se o número recebe WhatsApp.
+
+        Retorna True quando a Meta aceita o envio, False quando ela recusa por
+        causa do destinatário e None quando não dá para concluir nada (falha de
+        rede, credencial inválida, template inexistente). None nunca deve ser
+        tratado como número inválido.
+        """
+        url = (
+            f"https://graph.facebook.com/"
+            f"{settings.WHATSAPP_API_VERSION}/"
+            f"{settings.PHONE_NUMBER_ID}/messages"
+        )
+
+        headers = {
+            "Authorization": (
+                "Bearer "
+                + settings.WHATSAPP_ACCESS_TOKEN.get_secret_value()
+            ),
+            "Content-Type": "application/json",
+        }
+
+        payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": telefone,
+            "type": "template",
+            "template": {
+                "name": nome_template,
+                "language": {"code": idioma},
+                "components": [
+                    {
+                        "type": "body",
+                        # A Meta exige variáveis nomeadas: os nomes precisam ser
+                        # idênticos aos declarados no template aprovado.
+                        "parameters": [
+                            {"type": "text", "parameter_name": nome, "text": valor}
+                            for nome, valor in parametros.items()
+                        ],
+                    }
+                ],
+            },
+        }
+
+        try:
+            response = await cliente_http.post(url=url, headers=headers, json=payload)
+        except Exception:
+            logger.warning(
+                "Não foi possível contatar a Meta para enviar o template",
+                exc_info=False,
             )
+            return None
 
-            if response.is_error:
-                try:
-                    erro_meta = response.json().get("error", {})
+        if not response.is_error:
+            return True
 
-                    logger.error(
-                        "Meta recusou o envio da mensagem",
-                        extra={
-                            "status_code": response.status_code,
-                            "meta_code": erro_meta.get("code"),
-                            "meta_subcode": erro_meta.get("error_subcode"),
-                            "meta_type": erro_meta.get("type"),
-                            "meta_message": erro_meta.get("message"),
-                        },
-                        exc_info=False,
-                    )
-                except ValueError:
-                    logger.error(
-                        "Meta retornou uma resposta não JSON",
-                        extra={"status_code": response.status_code},
-                        exc_info=False,
-                    )
+        try:
+            erro_meta = response.json().get("error", {})
+        except ValueError:
+            erro_meta = {}
 
-            response.raise_for_status()
+        codigo = erro_meta.get("code")
+        logger.warning(
+            "Meta recusou o envio do template",
+            extra={
+                "status_code": response.status_code,
+                "meta_code": codigo,
+                "meta_message": erro_meta.get("message"),
+                "template": nome_template,
+                "telefone_destino": telefone,
+            },
+            exc_info=False,
+        )
 
-            return response.json()
+        if codigo in CODIGOS_DESTINATARIO_INVALIDO:
+            return False
+
+        # Qualquer outro motivo (token, template, limite) não diz nada sobre o número.
+        return None
+
 
     async def processar_mensagem(
         self,
@@ -205,11 +301,10 @@ class WhatsappService:
                         .strip()
                         .casefold()
                     )
-
                     if telefone:
                         return {
                             "texto": texto,
-                            "telefone": telefone,
+                            "telefone": normalizar_telefone_recebido(telefone),
                         }
 
         # É um evento de status ou outro evento não processado.

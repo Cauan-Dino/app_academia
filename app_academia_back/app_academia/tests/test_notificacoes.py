@@ -86,8 +86,8 @@ async def cenario(monkeypatch):
     factory = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
     async with factory() as db:
         db.add_all([
-            Personal(id=1, nome="Personal um", telefone="5585000000001", senha="test", usuario_ativo=True),
-            Personal(id=2, nome="Personal dois", telefone="5585000000002", senha="test", usuario_ativo=True),
+            Personal(id=1, nome="Personal um", senha="test", usuario_ativo=True),
+            Personal(id=2, nome="Personal dois", senha="test", usuario_ativo=True),
         ])
         await db.flush()
         db.add_all([
@@ -289,11 +289,11 @@ async def test_conflito_de_aula_fixa_impede_aceite_mas_permite_recusa(cenario):
 async def test_envio_persiste_notificacao_mesmo_sem_push_token(cenario):
     await cenario.query.buscar_notificacoes(1)
     service = NotificacaoService(cenario.db, cenario.redis)
-    service._disparar_a_notificaca_pro_celular_do_personal = AsyncMock()
+    service.disparar_a_notificaca_pro_celular_do_personal = AsyncMock()
     assert await service.enviar_notificacao(1, "Novo pedido", "Corpo", solicitacao_id=1)
     assert await cenario.db.scalar(select(func.count()).select_from(Notificacao)) == 4
     assert chave_notificacoes(1) not in cenario.redis.dados
-    service._disparar_a_notificaca_pro_celular_do_personal.assert_not_awaited()
+    service.disparar_a_notificaca_pro_celular_do_personal.assert_not_awaited()
 
 
 @pytest.mark.parametrize("falhar_registro", [False, True])

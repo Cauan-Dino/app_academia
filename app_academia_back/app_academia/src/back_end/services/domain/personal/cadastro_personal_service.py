@@ -1,6 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
-from back_end.services.infra.sms.telefone_utils import limpar_numero_telefone
 from back_end.services.infra.database.models import Personal
 from back_end.schemas.personal_schema import CadastroPersonal
 from sqlalchemy import select
@@ -41,20 +40,12 @@ class PersonalCadastroService:
 
 
     async def cadastro_personal(self, body: CadastroPersonal) -> dict:
-        body.telefone = limpar_numero_telefone(numero=body.telefone)
-
-        query_usuario_telefone = select(Personal).where(Personal.telefone == body.telefone) # Verifica se o TELEFONE já está cadastrado
         query_usuario_email = select(Personal).where(Personal.email == body.email) # Verifica se o EMAIL já está cadastrado
+        email_do_usuario = (await self.db.execute(query_usuario_email)).scalar_one_or_none()
 
-        resultado_telefone = await self.db.execute(query_usuario_telefone)
-        resultado_email = await self.db.execute(query_usuario_email)
-
-        telefone_do_usuario = resultado_telefone.scalar_one_or_none()
-        email_do_usuario = resultado_email.scalar_one_or_none()
-
-        # Impede o cadastro se o telefone ou e-mail já pertencem a qualquer conta,
+        # Impede o cadastro se o e-mail já pertence a qualquer conta,
         # ativa ou inativa — contas excluídas não são reaproveitadas silenciosamente.
-        if telefone_do_usuario is not None or email_do_usuario is not None:
+        if email_do_usuario is not None:
             raise HTTPException(
                 status_code=409,
                 detail=(
@@ -68,7 +59,6 @@ class PersonalCadastroService:
 
         usuario = Personal(
             nome=body.nome,
-            telefone=body.telefone,
             email=body.email,
             senha=senha_criptografada,
             usuario_ativo=False, # Usuário precisa confirmar a conta no Email
@@ -128,7 +118,7 @@ class PersonalCadastroService:
         try:
             await self.db.commit()
         except Exception:
-            self.db.rollback()
+            await self.db.rollback()
             raise HTTPException(
                 status_code=500,
                 detail="Ocorreu um erro ao validar o e-mail. Tente novamente mais tarde."

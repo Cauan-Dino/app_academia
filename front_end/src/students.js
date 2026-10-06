@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Alert, Pressable, Text, View } from 'react-native';
 import { api } from './api';
 import { Button, Field, Notice } from './components';
 import { colors } from './theme';
@@ -81,8 +81,18 @@ export function StudentFormScreen({ student, onBack, onSaved }) {
     setBusy(true);
     setError('');
     try {
-      if (editing) await api.updateStudent(student.id, { nome, telefone });
-      else await api.createStudent({ nome, telefone });
+      if (editing) {
+        // Envia só o que mudou: o telefone no payload faz o back-end verificar o número.
+        const mudancas = {};
+        if (nome !== student.nome) mudancas.nome = nome;
+        if (telefone !== student.telefone) mudancas.telefone = telefone;
+        if (Object.keys(mudancas).length) await api.updateStudent(student.id, mudancas);
+      } else {
+        const resposta = await api.createStudent({ nome, telefone });
+        if (resposta?.telefone_verificado === false) {
+          Alert.alert('Confira o telefone', resposta.message);
+        }
+      }
       onSaved();
     } catch (requestError) {
       setError(requestError.message);

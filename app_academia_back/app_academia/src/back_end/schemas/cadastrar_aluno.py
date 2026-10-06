@@ -1,45 +1,36 @@
-from pydantic import BaseModel, Field, ConfigDict
-from pydantic import field_validator
-import re
+from back_end.services.infra.utils.normalizar_telefone import normalizar_telefone
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+
 
 class CadastrarAluno(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     nome: str
-    telefone: str = Field(..., min_length=10, max_length=15)
+    telefone: str = Field(..., min_length=12, max_length=15)
 
     @field_validator('telefone', mode='before')
     @classmethod
-    def normalizar_telefone(
+    def _normalizar_telefone(
         cls,
         value: str,
     ) -> str:
-        telefone = re.sub(r'\D', "", value)
-        if len(telefone) > 15 or len(telefone) < 10:
-            raise ValueError(
-                "O telefone deve conter entre 10 e 15 dígitos, "
-                "incluindo o código do país e o DDD."
-            )
-        return telefone
+        return normalizar_telefone(value)
+
 
 class AlterarInformacoesAluno(BaseModel):
     model_config = ConfigDict(extra='forbid')
-    
+
     nome: str | None = None
-    telefone: str | None = Field(default=None, min_length=10, max_length=15)
+    telefone: str | None = Field(default=None, min_length=12, max_length=15)
 
     @field_validator('telefone', mode='before')
     @classmethod
-    def normalizar_telefone(
+    def _normalizar_telefone(
         cls,
         value: str | None
-    ) -> str:
+    ) -> str | None:
         if value is None:
             return None
-        telefone = re.sub(r'\D', "", value)
-        if len(telefone) > 15 or len(telefone) < 10:
-            raise ValueError(
-                "O telefone deve conter entre 10 e 15 dígitos, "
-                "incluindo o código do país e o DDD."
-            )
-        return telefone
+        return normalizar_telefone(value)

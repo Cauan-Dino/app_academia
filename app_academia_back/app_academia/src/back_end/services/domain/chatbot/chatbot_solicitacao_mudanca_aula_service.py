@@ -30,7 +30,7 @@ class SolicitacaoReagendamentoAulaService:
         whatsapp_service: WhatsappService,
         redis_client: Redis,
         utils_chatbot_service: UtilsChatbotService,
-        notificacao_service: NotificacaoService
+        notificacao_service: NotificacaoService,
         ):  
         """Recebe o banco, o envio de mensagens e as dependências de sessão."""
         self.db = db

@@ -9,13 +9,45 @@ from redis.asyncio import Redis
 from back_end.services.domain.aluno.aluno_query_service import AlunoQueryService 
 from back_end.services.domain.aluno.aluno_utils import PersonalClientUtils
 from back_end.services.infra.redis_service.notificacao_cache import invalidar_cache_notificacoes
+from back_end.services.domain.chatbot.whatsapp_service import WhatsappService
+from back_end.services.infra.config.settings import settings
 
 class AlunoCommandService:
-    def __init__(self, db: AsyncSession, redis_client: Redis):
+    def __init__(
+        self,
+        db: AsyncSession,
+        redis_client: Redis,
+        whatsapp_service: WhatsappService,
+    ):
         self.db = db
         self.redis_client = redis_client
+        self.whatsapp_service = whatsapp_service
         self.query_service = AlunoQueryService(db, redis_client)
         self.client_utils = PersonalClientUtils()
+
+
+    async def _enviar_notificacao_no_telefone_no_whatsapp_do_aluno(
+        self,
+        telefone: str,
+        nome_aluno: str,
+        nome_personal: str,
+    ) -> bool | None:
+        """Diz se o número recebe WhatsApp, enviando o template de boas-vindas.
+
+        Roda antes de gravar o aluno: True = número aceito, False = não recebe
+        WhatsApp, None = não foi possível confirmar agora.
+        """
+        resultado = await self.whatsapp_service.enviar_template(
+            telefone=telefone,
+            nome_template=settings.WHATSAPP_TEMPLATE_BOAS_VINDAS,
+            idioma=settings.WHATSAPP_TEMPLATE_IDIOMA,
+            parametros={
+                "nome_do_aluno": nome_aluno,
+                "nome_do_personal": nome_personal,
+            },
+        )
+
+        return resultado
 
 
     async def cadastrar_aluno(
@@ -29,7 +61,26 @@ class AlunoCommandService:
         body.telefone = await self.query_service.verificar_se_telefone_do_aluno_ja_ta_cadastrado(telefone_aluno=body.telefone, personal_id=personal_id)
         body.nome = await self.query_service.verifica_se_nome_do_aluno_ja_ta_cadastrado(nome_aluno=body.nome, personal_id=personal_id)
 
-        informacoes_aluno = Alunos(**body.model_dump(), personal_id=personal_id)
+        # Tenta enviar uma notificação pro telefone do aluno enviado no payload
+        # Se Falhar exibe uma mensagem de erro, se não cadastra
+        telefone_verificado = await self._enviar_notificacao_no_telefone_no_whatsapp_do_aluno(
+            telefone=body.telefone,
+            nome_aluno=body.nome,
+            nome_personal=access_token.get("nome", ""),
+        )
+
+        if telefone_verificado is False:
+            raise HTTPException(
+                status_code=400,
+                detail="Esse número não recebe WhatsApp. Confira se foi digitado corretamente."
+            )
+
+        if telefone_verificado is None:
+            mensagem = "Aluno cadastrado. Não foi possível confirmar o número no WhatsApp agora."
+        else:
+            mensagem = "Aluno cadastrado com sucesso! Enviamos uma mensagem de boas-vindas."
+
+        informacoes_aluno = Alunos(**body.model_dump(), telefone_verificado=telefone_verificado, personal_id=personal_id)
         self.db.add(informacoes_aluno)
 
         try:
@@ -55,8 +106,11 @@ class AlunoCommandService:
                 )
         except Exception:
             logger.exception("Não foi possível invalidar o cache dos alunos", exc_info=False)
-            
-        return {'message':'Aluno cadastrado com sucesso!'}
+
+        return {
+            "message": mensagem,
+            "telefone_verificado": telefone_verificado,
+        }
 
 
 
@@ -77,7 +131,7 @@ class AlunoCommandService:
         alunos = resultado.scalar_one_or_none()
 
         if not alunos:
-            raise HTTPException(
+            raise HTTPException(    
                 status_code=404,
                 detail="Aluno não encontrado"
             )
@@ -97,8 +151,14 @@ class AlunoCommandService:
                     status_code=400,
                     detail="O telefone não pode ser nulo"
                 )
-            
-            dados_atualizacao['telefone'] = await self.query_service.verificar_se_telefone_do_aluno_ja_ta_cadastrado(
+
+            # O schema já normalizou o número: se é o mesmo que está salvo, não houve troca
+            # e não há o que verificar nem reenviar (o app sempre manda o telefone ao editar).
+            if dados_atualizacao["telefone"] == alunos.telefone:
+                del dados_atualizacao["telefone"]
+
+        if "telefone" in dados_atualizacao:
+            dados_atualizacao['telefone'] =await self.query_service.verificar_se_telefone_do_aluno_ja_ta_cadastrado(
                 telefone_aluno=dados_atualizacao['telefone'], 
                 personal_id=personal_id,
                 aluno_id_ignorado=aluno_id
@@ -117,6 +177,19 @@ class AlunoCommandService:
                 personal_id=personal_id, 
                 aluno_id_ignorado=aluno_id
             )
+
+        if 'telefone' in dados_atualizacao:
+            verificado  = await self._enviar_notificacao_no_telefone_no_whatsapp_do_aluno(
+                telefone=dados_atualizacao['telefone'],
+                nome_aluno=dados_atualizacao.get('nome', alunos.nome),
+                nome_personal=access_token.get("nome", ""),
+            )
+            if verificado is False:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Esse número não recebe WhatsApp. Confira se foi digitado corretamente.",
+            )
+            alunos.telefone_verificado = verificado
 
         # Aplica as alterações no objeto
         for campo, valor in dados_atualizacao.items():
@@ -187,7 +260,7 @@ class AlunoCommandService:
                 f"alunos:personal:{personal_id}:aluno:{aluno_id}"
                 )
         except Exception:
-            logger.exception("Não foi possível invalidar o cache dos alunos")
+            logger.exception("Não foi possível invalidar o cache dos alunos", exc_info=False)
 
         await invalidar_cache_notificacoes(self.redis_client, personal_id)
         return {'message':f'Aluno deletado: {aluno.nome}'}

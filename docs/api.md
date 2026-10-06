@@ -37,7 +37,7 @@ Trocar a senha incrementa o `token_version` do personal, invalidando todas as se
 | Auth | Método | Rota | Descrição |
 |:--:|---|---|---|
 | ✅ | `POST` | `/deletar-conta` | Valida a senha e envia o link de confirmação por e-mail. Limitado a 5 tentativas. |
-| — | `GET` | `/confirmar-exclusao-conta?token=` | Conclui a exclusão lógica e anonimiza telefone e e-mail. |
+| — | `GET` | `/confirmar-exclusao-conta?token=` | Conclui a exclusão lógica e anonimiza o e-mail. |
 | ✅ | `POST` | `/deletar-conta/reenviar-email` | Reenvia o link de exclusão. |
 
 ## Alunos
@@ -92,6 +92,6 @@ Essas rotas não usam JWT, mas **não são abertas**: cada evento recebido tem a
 |---|---|
 | `401` | Token ausente, inválido, expirado ou invalidado por troca de senha. |
 | `403` | Conta sem e-mail confirmado, ou assinatura inválida no webhook. |
-| `409` | Conflito: telefone/e-mail já cadastrado, aluno duplicado, sobreposição de horário. |
+| `409` | Conflito: e-mail já cadastrado, aluno duplicado, sobreposição de horário. |
 | `429` | Cooldown de envio de e-mail ainda ativo, ou limite de tentativas atingido. |
 | `503` | Dependência indisponível (Redis fora do ar, falha no envio de e-mail). |

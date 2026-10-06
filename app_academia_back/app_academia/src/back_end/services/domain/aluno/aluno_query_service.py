@@ -1,4 +1,4 @@
-from back_end.services.infra.sms.telefone_utils import limpar_numero_telefone
+from back_end.services.infra.utils.normalizar_telefone import normalizar_telefone
 from sqlalchemy import select
 from fastapi import HTTPException
 from back_end.services.infra.database.models import Alunos
@@ -27,7 +27,7 @@ class AlunoQueryService:
         Se sim, Retorna um erro.
         Se não, Passa normalmente
         """
-        telefone_aluno_formatado = limpar_numero_telefone(telefone_aluno)
+        telefone_aluno_formatado = normalizar_telefone(telefone_aluno)
 
         query = select(Alunos).where(
             Alunos.telefone == telefone_aluno_formatado, 

@@ -1,8 +1,8 @@
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
-import os
+from back_end.services.infra.config.settings import settings
 
-PEPPER = os.getenv('PEPPER')
+PEPPER = settings.PEPPER.get_secret_value()
 
 ph = PasswordHasher(
     time_cost=3,
