@@ -11,13 +11,13 @@
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://cordie-careworn-mirella.ngrok-free.dev"
+        "EXPO_PUBLIC_API_URL": "https://appacademia-production-cb71.up.railway.app"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.seudominio.com"
+        "EXPO_PUBLIC_API_URL": "https://appacademia-production-cb71.up.railway.app"
       }
     }
   },

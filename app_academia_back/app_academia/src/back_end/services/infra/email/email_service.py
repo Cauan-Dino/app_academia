@@ -8,13 +8,35 @@ from back_end.auth.auth_token_itsdangerous import (
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from back_end.services.infra.redis_service.redis_config import redis_client
-import os
+import uuid
+from urllib.parse import quote
 from redis.asyncio import RedisError
 from back_end.schemas.personal_schema import ReenviarEmailConfirmacao, EnviarEmailRedefinirSenha, AlterarSenhaPersonal
 from back_end.core.logging.logs_settings import logger
+from back_end.services.infra.config.settings import settings
 from back_end.services.infra.filas.tasks.email_task import fila_enviar_email
 
 router = APIRouter(tags=['Envio de email'])
+
+
+def montar_link(caminho: str, token: str) -> str:
+    """Link de um endpoint GET da API, com o token protegido para ir na URL."""
+    base = settings.API_PUBLIC_URL.rstrip('/')
+    return f"{base}{caminho}?token={quote(token, safe='')}"
+
+
+def link_confirmar_email(token: str) -> str:
+    return montar_link('/confirmar-email', token)
+
+
+def link_confirmar_exclusao_conta(token: str) -> str:
+    return montar_link('/confirmar-exclusao-conta', token)
+
+
+def link_redefinir_senha(token: str) -> str:
+    # Os endpoints de senha são PATCH e só o app os chama: o link leva a uma
+    # página da API que abre o app na tela de nova senha (ver update_personal.py).
+    return montar_link('/abrir-app/redefinir-senha', token)
 
 class EmailService:
     def __init__(self, db: AsyncSession):
@@ -22,12 +44,12 @@ class EmailService:
 
 
     async def _enviar_email(
-            self, 
-            token: str, 
-            mensagem_email: str, 
-            subject: str, 
-            destinatario: str, 
-            body: str, 
+            self,
+            link: str,
+            assunto: str,
+            destinatario: str,
+            texto: str,
+            texto_botao: str,
             usuario_id: int,
             chave_redis: str
         ) -> None:
@@ -39,12 +61,14 @@ class EmailService:
         await self.verificar_cooldown_de_envio_email(chave_redis=redis_key)
         # Coloca o envio do email em uma fila
         await fila_enviar_email.kiq(
-            token=token,
-            mensagem_email=mensagem_email,
-            subject=subject,
             destinatario=destinatario,
-            body=body,
+            assunto=assunto,
+            texto=texto,
+            link=link,
+            texto_botao=texto_botao,
             redis_key=redis_key,
+            # Uma chave por e-mail: as retentativas da fila não geram cópias.
+            chave_idempotencia=uuid.uuid4().hex,
         )
             
 
@@ -84,11 +108,11 @@ class EmailService:
         """Envia o email de confirmação de criação de conta"""
 
         await self._enviar_email(
-            token=token,
-            mensagem_email='confirmar-email',
-            subject='Confirme seu e-mail',
+            link=link_confirmar_email(token),
+            assunto='Confirme seu e-mail',
             destinatario=email,
-            body="Clique no link para confirmar seu e-mail",
+            texto="Clique no botão abaixo para confirmar seu e-mail e ativar sua conta no TreinoPro.",
+            texto_botao="Confirmar e-mail",
             usuario_id=usuario_id,
             chave_redis=f'cooldown:email_confirmacao'
         )
@@ -134,11 +158,11 @@ class EmailService:
         """Envia email pra confirmar exclusão de conta"""
         
         await self._enviar_email(
-            token=token,
-            mensagem_email='confirmar-exclusao-conta',
-            subject='Exclusão de conta',
+            link=link_confirmar_exclusao_conta(token),
+            assunto='Exclusão de conta',
             destinatario=email,
-            body='Clique no link para excluir sua conta',
+            texto='Recebemos um pedido para excluir sua conta no TreinoPro. Se foi você, clique no botão abaixo.',
+            texto_botao='Excluir minha conta',
             chave_redis=f'cooldown:email_confirmacao_exclusao_de_conta',
             usuario_id=usuario_id
         )
@@ -191,11 +215,11 @@ class EmailService:
         token = gerar_token_alterar_senha(body.email)
 
         await self._enviar_email(
-            token=token,
-            mensagem_email='/senha/alterar-senha',
-            subject='Alteração de Senha',
+            link=link_redefinir_senha(token),
+            assunto='Alteração de Senha',
             destinatario=body.email,
-            body='Clique no link para alterar a sua senha',
+            texto='Abra este e-mail no celular com o TreinoPro instalado e toque no botão para criar sua nova senha.',
+            texto_botao='Alterar senha',
             usuario_id=access_token['id'],
             chave_redis='cooldown:email_alterar_senha_logado'
         )
@@ -216,11 +240,11 @@ class EmailService:
         token = gerar_token_alterar_senha(body.email)
 
         await self._enviar_email(
-            token=token,
-            mensagem_email='/senha/redefinir-senha',
-            subject='Alteração de Senha',
+            link=link_redefinir_senha(token),
+            assunto='Alteração de Senha',
             destinatario=body.email,
-            body='Clique no link para alterar a sua senha',
+            texto='Abra este e-mail no celular com o TreinoPro instalado e toque no botão para criar sua nova senha.',
+            texto_botao='Alterar senha',
             usuario_id=usuario_id,
             chave_redis='cooldown:email_alterar_senha_deslogado'
         )

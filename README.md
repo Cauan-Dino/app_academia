@@ -42,7 +42,7 @@ Os logs da aplicação são gravados em arquivo, coletados pelo Logstash e index
 | Fila | TaskIQ (broker Redis Streams) |
 | Observabilidade | Elasticsearch, Logstash, Kibana |
 | Mobile | Expo / React Native, Expo Notifications |
-| Integrações | WhatsApp Cloud API (Meta), Expo Push Service, SMTP |
+| Integrações | WhatsApp Cloud API (Meta), Expo Push Service, Resend (e-mail) |
 
 ## Estrutura do repositório
 
