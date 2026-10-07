@@ -1,0 +1,25 @@
+name: CI/CD Pipeline - Deploy PokeAPI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+  
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+  steps:
+    - name: Copiar o repositorio
+      uses: actions/checkout@v5
+
+    - name: Criar .env Temporario
+      run: |
+        echo "REDIS_HOST=redis" > .env
+        echo "REDIS_PORT=6379" >> .env
+        echo "ES_HOST=elasticsearch" >> .env
+        echo "KIBANA_PORT=5601" >> .env
+        echo "ES_PORT=9200" >> .env
+        echo "SQLALCHEMY_DATABASE_URL=mysql+aiomysql://root:senha_teste@mysql:3306/banco_temporario" >> .env
