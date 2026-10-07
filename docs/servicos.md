@@ -81,14 +81,16 @@ O estado da conversa vive apenas no Redis, com expiração de 30 a 40 segundos: 
 A divisão de responsabilidade é importante:
 
 - **Verificação de cooldown** — roda de forma **síncrona**, dentro da requisição, usando uma chave no Redis com validade de 60 segundos. Assim o usuário recebe o erro `429` imediatamente se pedir outro e-mail cedo demais.
-- **Envio propriamente dito** — vai para a **fila**, porque depende de uma conexão SMTP que pode ser lenta.
+- **Envio propriamente dito** — vai para a **fila**, porque depende de uma chamada à API do Resend que pode ser lenta.
+
+Os links dos e-mails usam o endereço público da API (`API_PUBLIC_URL`). Os de confirmação de cadastro e de exclusão de conta apontam direto para os endpoints `GET` correspondentes. O de troca de senha aponta para `GET /abrir-app/redefinir-senha`, uma página que abre o app (`treinopro://senha/redefinir-senha?token=...`): os endpoints de senha são `PATCH` e o Gmail não aceita links `treinopro://` no e-mail.
 
 ### Fila de tarefas — `infra/filas`
 
 | Arquivo | Função |
 |---|---|
 | `taskiq/taskiq_app.py` | Configura o broker (Redis Streams) e o scheduler. Inclui o `SmartRetryMiddleware`: até 3 tentativas por padrão, com espera exponencial (5s, 10s, 20s…) e *jitter* — uma variação aleatória que evita que várias tarefas que falharam juntas voltem a tentar no mesmo instante. |
-| `tasks/email_task.py` | A tarefa `fila_enviar_email`, que monta a mensagem e a envia pelo SMTP. Em caso de erro, apaga a chave de cooldown (para o usuário poder tentar de novo) e relança a exceção, sinalizando ao middleware que deve repetir. |
+| `tasks/email_task.py` | A tarefa `fila_enviar_email`, que monta a mensagem e a envia pela API HTTPS do Resend (o Railway bloqueia SMTP nos planos Trial e Hobby). Cada e-mail leva uma `Idempotency-Key`, então as retentativas não geram cópias. Em caso de erro, apaga a chave de cooldown (para o usuário poder tentar de novo) e relança a exceção, sinalizando ao middleware que deve repetir. Sem `RESEND_API_KEY`, só registra o erro no log. |
 
 A tarefa precisa **relançar** a exceção: se o erro for capturado e silenciado, o TaskIQ considera a execução bem-sucedida e a nova tentativa nunca acontece.
 

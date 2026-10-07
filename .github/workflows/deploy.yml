@@ -1,4 +1,4 @@
-name: CI/CD Pipeline - Deploy PokeAPI
+name: Teste de inicialização da API
 
 on:
   push:
@@ -10,16 +10,84 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
-  steps:
-    - name: Copiar o repositorio
-      uses: actions/checkout@v5
-
-    - name: Criar .env Temporario
-      run: |
-        echo "REDIS_HOST=redis" > .env
-        echo "REDIS_PORT=6379" >> .env
-        echo "ES_HOST=elasticsearch" >> .env
-        echo "KIBANA_PORT=5601" >> .env
-        echo "ES_PORT=9200" >> .env
-        echo "SQLALCHEMY_DATABASE_URL=mysql+aiomysql://root:senha_teste@mysql:3306/banco_temporario" >> .env
+    defaults:
+      run:
+        working-directory: app_academia_back
+    steps:
+      - name: Copiar o repositorio
+        uses: actions/checkout@v5
+  
+      - name: Criar .env Temporario
+        run: |
+          cat <<EOF > .env
+          # Banco de dados
+          MYSQL_ROOT_PASSWORD=root_teste
+          MYSQL_DATABASE=banco_temporario
+          MYSQL_USER=app_user
+          MYSQL_PASSWORD=senha_teste
+          SQLALCHEMY_DATABASE_URL=mysql+aiomysql://app_user:senha_teste@mysql:3306/banco_temporario?charset=utf8mb4
+      
+          # JWT TOKEN
+          SECRET_KEY=$(openssl rand -hex 32)
+          TEMPO_REFRESH_TOKEN=45
+          TEMPO_ACCESS_TOKEN=30
+          ALGORITHM=HS256
+      
+          # TOKEN ItsDangerous
+          EMAIL_TOKEN_SECRET_KEY=$(openssl rand -hex 32)
+      
+          # Whatsapp business
+          WHATSAPP_ACCESS_TOKEN=fake_access_token
+          WHATSAPP_VERIFY_TOKEN=fake_verify_token
+          WHATSAPP_APP_SECRET=fake_app_secret
+          PHONE_NUMBER_ID=000000000000
+          WHATSAPP_API_VERSION=v26.0
+          WHATSAPP_TEMPLATE_BOAS_VINDAS=boas_vindas_app_academia
+          WHATSAPP_TEMPLATE_IDIOMA=pt_BR
+      
+          # Envio email
+          EMAIL_PASSWORD=fake_email_password
+          EMAIL_USERNAME=teste@example.com
+          EMAIL_FROM=teste@example.com
+          EMAIL_SERVER=smtp.example.com
+      
+          # Redis
+          REDIS_HOST=redis
+          REDIS_PORT=6379
+          REDIS_PASSWORD=redis_teste
+      
+          # Elasticsearch
+          ES_HOST=elasticsearch
+          ES_PORT=9200
+          LOG_FILE_PATH=./logs/app.log
+          KIBANA_PORT=5601
+          ELASTIC_PASSWORD=elastic_teste
+      
+          # Criptografia
+          PEPPER=$(openssl rand -hex 32)
+      
+          # CORS
+          CORS_ORIGINS=http://localhost:8081,http://localhost:19006
+      
+          # Docs
+          HABILITAR_DOCS=false
+          EOF
+          
+      - name: Criar e subir container de teste
+        run: |
+          # -f: só o arquivo base (modo produção), sem o docker-compose.override.yml
+          docker compose -f docker-compose.yml up --build -d app
+          sleep 10
+          docker compose -f docker-compose.yml logs
+  
+      - name: Verificar se o container ainda está de pé via endpoint /health
+        run: curl --fail --retry 5 --retry-delay 3 --retry-connrefused http://localhost:8000/health
+  
+      - name: Exibir falhas (se falhar)
+        if: failure()
+        run: docker compose -f docker-compose.yml logs
+  
+      - name: Matar o container
+        if: always()
+        run: docker compose -f docker-compose.yml down
+      

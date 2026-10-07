@@ -38,5 +38,15 @@ class Settings(BaseSettings):
     # CRIPTOGRAFIA DE SENHA
     PEPPER: SecretStr = Field(min_length=16)
 
+    # E-MAIL (Resend): o Railway bloqueia SMTP nos planos Trial e Hobby, então o
+    # envio é pela API HTTPS. Sem a chave, a tarefa só registra um erro no log.
+    RESEND_API_KEY: SecretStr | None = None
+    # Sem domínio verificado no Resend, onboarding@resend.dev só entrega
+    # para o e-mail da própria conta do Resend.
+    RESEND_FROM: str = "TreinoPro <onboarding@resend.dev>"
+
+    # Endereço público da API, usado para montar os links dos e-mails.
+    API_PUBLIC_URL: str = "http://localhost:8000"
+
 settings = Settings()
 
