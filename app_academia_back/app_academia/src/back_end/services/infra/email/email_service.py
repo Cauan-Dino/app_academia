@@ -134,7 +134,7 @@ class EmailService:
             return {"message": "Se existir uma conta pendente, enviaremos um novo link de confirmação."}
 
         # Gera um token itsdangerous pra colocar no link da mensagem enviada
-        token = gerar_token_confirmacao_email(body.email)
+        token = gerar_token_confirmacao_email(body.email, usuario.senha)
 
         await self.enviar_email_confirmacao(
             token=token, 
