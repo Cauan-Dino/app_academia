@@ -7,7 +7,12 @@ from back_end.core.logging.logs_settings import logger
 from sqlalchemy.exc import IntegrityError
 from back_end.services.infra.criptografia.criptografia_de_senhas import criptografar_senha
 from back_end.services.infra.email.email_service import EmailService
-from back_end.auth.auth_token_itsdangerous import gerar_token_confirmacao_email, validar_token_confirmacao_email
+from back_end.auth.auth_token_itsdangerous import (
+    LINK_INVALIDO,
+    gerar_token_confirmacao_email,
+    token_e_da_senha_atual,
+    validar_token_confirmacao_email,
+)
 
 
 
@@ -43,8 +48,8 @@ class PersonalCadastroService:
         query_usuario_email = select(Personal).where(Personal.email == body.email) # Verifica se o EMAIL já está cadastrado
         email_do_usuario = (await self.db.execute(query_usuario_email)).scalar_one_or_none()
 
-        # Impede o cadastro se o e-mail já pertence a qualquer conta,
-        # ativa ou inativa — contas excluídas não são reaproveitadas silenciosamente.
+        # Conta confirmada não é sobrescrita. Contas excluídas não entram aqui:
+        # a exclusão apaga o e-mail da linha.
         if email_do_usuario is not None and email_do_usuario.email_verificado is True:
             raise HTTPException(
                 status_code=409,
@@ -57,14 +62,22 @@ class PersonalCadastroService:
         self.validar_senha(body.senha, body.confirmar_senha)
         senha_criptografada = criptografar_senha(body.senha)
 
-        usuario = Personal(
-            nome=body.nome,
-            email=body.email,
-            senha=senha_criptografada,
-            usuario_ativo=False, # Usuário precisa confirmar a conta no Email
-            email_verificado=False
-        )
-        self.db.add(usuario)
+        if email_do_usuario is None:
+            usuario = Personal(
+                nome=body.nome,
+                email=body.email,
+                senha=senha_criptografada,
+                usuario_ativo=False, # Usuário precisa confirmar a conta no Email
+                email_verificado=False
+            )
+            self.db.add(usuario)
+        else:
+            # Cadastro pendente (e-mail não confirmado): refazer o cadastro troca
+            # os dados e envia um novo link. Os links antigos deixam de valer,
+            # porque o token de confirmação carrega a senha do cadastro.
+            usuario = email_do_usuario
+            usuario.nome = body.nome
+            usuario.senha = senha_criptografada
 
         try:
             await self.db.commit()
@@ -74,7 +87,7 @@ class PersonalCadastroService:
         
         await self.db.refresh(usuario)
         # --- Envia Email de Confirmação ------------------
-        token = gerar_token_confirmacao_email(body.email)
+        token = gerar_token_confirmacao_email(body.email, usuario.senha)
         try:
             await self.email_service.enviar_email_confirmacao(token=token, email=body.email, usuario_id=usuario.id) 
         # Trata o erro de Cooldown de envio
@@ -96,7 +109,7 @@ class PersonalCadastroService:
             token: str
         ) -> dict:
         """Confirma o email clicando no link enviado no email"""
-        email = validar_token_confirmacao_email(token=token)
+        email, impressao_senha = validar_token_confirmacao_email(token=token)
 
         # Verifica se o email existe    
         query = select(Personal).where(Personal.email == email)
@@ -112,6 +125,10 @@ class PersonalCadastroService:
         # Verifica se o email já tá verificado
         if usuario.email_verificado is True:
             return {"detail": "E-mail já confirmado anteriormente."}
+
+        # Link de um cadastro anterior, refeito depois com outra senha
+        if not token_e_da_senha_atual(impressao_senha, usuario.senha):
+            raise HTTPException(status_code=400, detail=LINK_INVALIDO)
 
         usuario.email_verificado = True # Confirma o email
         usuario.usuario_ativo = True # Ativa a conta do usuario
