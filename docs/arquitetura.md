@@ -34,7 +34,7 @@ GET /confirmar-email?token=...
   → valida o token assinado e ativa a conta
 ```
 
-O envio do e-mail é assíncrono para não prender a resposta HTTP na chamada à API do Resend. O que **não** é assíncrono é a verificação de cooldown: ela roda ainda dentro da requisição, para que o usuário receba o erro 429 na hora.
+O envio do e-mail é assíncrono para não prender a resposta HTTP na chamada à API do Brevo. O que **não** é assíncrono é a verificação de cooldown: ela roda ainda dentro da requisição, para que o usuário receba o erro 429 na hora.
 
 ### Cadastro de aluno e verificação do telefone
 

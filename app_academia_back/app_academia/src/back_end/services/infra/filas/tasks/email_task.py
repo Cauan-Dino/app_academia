@@ -6,7 +6,11 @@ from back_end.services.infra.http.cliente_http import cliente_http
 from back_end.services.infra.redis_service.redis_config import redis_client
 from back_end.core.logging.logs_settings import logger
 
-URL_RESEND = "https://api.resend.com/emails"
+URL_BREVO = "https://api.brevo.com/v3/smtp/email"
+# Marca o e-mail como enviado: o Brevo não aceita Idempotency-Key, então é o
+# Redis que impede uma retentativa de mandar a mesma mensagem de novo.
+PREFIXO_ENVIADO = "email_enviado"
+VALIDADE_MARCA_ENVIADO = 24 * 60 * 60  # segundos
 
 
 def montar_html(texto: str, link: str, texto_botao: str) -> str:
@@ -34,28 +38,31 @@ async def fila_enviar_email(
         redis_key: str,
         chave_idempotencia: str,
     ) -> None:
-    chave_api = settings.RESEND_API_KEY
-    if chave_api is None:
-        # Sem a chave, tentar de novo não adianta: libera o cooldown e só registra.
+    chave_api = settings.BREVO_API_KEY
+    if chave_api is None or not settings.BREVO_FROM_EMAIL:
+        # Sem a configuração, tentar de novo não adianta: libera o cooldown e só registra.
         await redis_client.delete(redis_key)
-        logger.error('RESEND_API_KEY não configurada: e-mail não enviado', extra={'redis_key': redis_key})
+        logger.error(
+            'BREVO_API_KEY ou BREVO_FROM_EMAIL não configurado: e-mail não enviado',
+            extra={'redis_key': redis_key},
+        )
         return
 
+    marca_enviado = f'{PREFIXO_ENVIADO}:{chave_idempotencia}'
     try:
+        if await redis_client.exists(marca_enviado):
+            # Uma tentativa anterior já entregou ao Brevo; não manda a cópia.
+            return
+
         resposta = await cliente_http.post(
-            URL_RESEND,
-            headers={
-                "Authorization": f"Bearer {chave_api.get_secret_value()}",
-                # As retentativas desta tarefa repetem a chave, então o Resend
-                # não envia o mesmo e-mail duas vezes (a chave vale por 24 h).
-                "Idempotency-Key": chave_idempotencia,
-            },
+            URL_BREVO,
+            headers={"api-key": chave_api.get_secret_value()},
             json={
-                "from": settings.RESEND_FROM,
-                "to": [destinatario],
+                "sender": {"name": settings.BREVO_FROM_NAME, "email": settings.BREVO_FROM_EMAIL},
+                "to": [{"email": destinatario}],
                 "subject": assunto,
-                "html": montar_html(texto, link, texto_botao),
-                "text": f"{texto}\n\n{link}",
+                "htmlContent": montar_html(texto, link, texto_botao),
+                "textContent": f"{texto}\n\n{link}",
             },
         )
 
@@ -64,12 +71,14 @@ async def fila_enviar_email(
                 motivo = resposta.json().get("message")
             except ValueError:
                 motivo = None
-            # O motivo do Resend explica a recusa, ex.: domínio não verificado.
+            # O motivo do Brevo explica a recusa, ex.: remetente não verificado.
             logger.error(
-                'Resend recusou o e-mail',
+                'Brevo recusou o e-mail',
                 extra={'redis_key': redis_key, 'status_code': resposta.status_code, 'motivo': motivo},
             )
         resposta.raise_for_status()
+
+        await redis_client.set(marca_enviado, 'enviado', ex=VALIDADE_MARCA_ENVIADO)
 
     except Exception:
         await redis_client.delete(redis_key) # Deleta a chave salva no redis no inicio

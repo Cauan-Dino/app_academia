@@ -45,7 +45,7 @@ class PersonalCadastroService:
 
         # Impede o cadastro se o e-mail já pertence a qualquer conta,
         # ativa ou inativa — contas excluídas não são reaproveitadas silenciosamente.
-        if email_do_usuario is not None:
+        if email_do_usuario is not None and email_do_usuario.email_verificado is True:
             raise HTTPException(
                 status_code=409,
                 detail=(

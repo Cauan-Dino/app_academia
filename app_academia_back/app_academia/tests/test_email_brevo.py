@@ -1,4 +1,4 @@
-"""Envio dos e-mails pelo Resend e links que eles carregam."""
+"""Envio dos e-mails pelo Brevo e links que eles carregam."""
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -23,15 +23,20 @@ pytestmark = pytest.mark.anyio
 
 class RedisMemoria:
     def __init__(self):
+        self.chaves = {}
         self.apagadas = []
 
     async def ttl(self, chave):
         return -2
 
+    async def exists(self, chave):
+        return int(chave in self.chaves)
+
     async def set(self, chave, valor, ex=None):
-        pass
+        self.chaves[chave] = valor
 
     async def delete(self, chave):
+        self.chaves.pop(chave, None)
         self.apagadas.append(chave)
 
 
@@ -46,10 +51,11 @@ def fila(monkeypatch):
 
 
 @pytest.fixture
-def resend(monkeypatch):
+def brevo(monkeypatch):
     """Substitui o cliente HTTP e o Redis da tarefa; devolve o post e o Redis."""
-    monkeypatch.setattr(settings, "RESEND_API_KEY", SecretStr("re_chave_de_teste"))
-    monkeypatch.setattr(settings, "RESEND_FROM", "TreinoPro <onboarding@resend.dev>")
+    monkeypatch.setattr(settings, "BREVO_API_KEY", SecretStr("xkeysib-chave-de-teste"))
+    monkeypatch.setattr(settings, "BREVO_FROM_EMAIL", "treinopro@gmail.com")
+    monkeypatch.setattr(settings, "BREVO_FROM_NAME", "TreinoPro")
     redis = RedisMemoria()
     monkeypatch.setattr(email_task, "redis_client", redis)
     post = AsyncMock()
@@ -57,8 +63,8 @@ def resend(monkeypatch):
     return post, redis
 
 
-def resposta_resend(status, corpo):
-    return httpx2.Response(status, json=corpo, request=httpx2.Request("POST", email_task.URL_RESEND))
+def resposta_brevo(status, corpo):
+    return httpx2.Response(status, json=corpo, request=httpx2.Request("POST", email_task.URL_BREVO))
 
 
 async def enviar(**campos):
@@ -125,30 +131,49 @@ async def test_cada_email_recebe_uma_chave_de_idempotencia_propria(fila):
 # --------------------------------------------------------------------------
 
 
-async def test_envia_pelo_resend_com_link_no_html_e_no_texto(resend):
-    post, redis = resend
-    post.return_value = resposta_resend(200, {"id": "49a3999c"})
+async def test_envia_pelo_brevo_com_link_no_html_e_no_texto(brevo):
+    post, redis = brevo
+    post.return_value = resposta_brevo(201, {"messageId": "<202610081200.123@smtp-relay.mailin.fr>"})
 
     await enviar()
 
     argumentos = post.call_args.kwargs
-    assert post.call_args.args == (email_task.URL_RESEND,)
-    assert argumentos["headers"]["Authorization"] == "Bearer re_chave_de_teste"
-    assert argumentos["headers"]["Idempotency-Key"] == "chave-unica"
+    assert post.call_args.args == (email_task.URL_BREVO,)
+    assert argumentos["headers"]["api-key"] == "xkeysib-chave-de-teste"
     corpo = argumentos["json"]
-    assert corpo["from"] == "TreinoPro <onboarding@resend.dev>"
-    assert corpo["to"] == ["ana@example.com"]
+    assert corpo["sender"] == {"name": "TreinoPro", "email": "treinopro@gmail.com"}
+    assert corpo["to"] == [{"email": "ana@example.com"}]
     assert corpo["subject"] == "Confirme seu e-mail"
-    assert 'href="https://api.exemplo.com/confirmar-email?token=abc"' in corpo["html"]
-    assert "https://api.exemplo.com/confirmar-email?token=abc" in corpo["text"]
+    assert 'href="https://api.exemplo.com/confirmar-email?token=abc"' in corpo["htmlContent"]
+    assert "https://api.exemplo.com/confirmar-email?token=abc" in corpo["textContent"]
     # Envio bem-sucedido mantém o cooldown.
     assert redis.apagadas == []
 
 
-async def test_recusa_do_resend_libera_o_cooldown_e_pede_nova_tentativa(resend):
-    post, redis = resend
-    post.return_value = resposta_resend(
-        403, {"name": "validation_error", "message": "You can only send testing emails to your own email address"},
+async def test_retentativa_de_email_ja_enviado_nao_manda_copia(brevo):
+    post, redis = brevo
+    post.return_value = resposta_brevo(201, {"messageId": "<1@smtp-relay.mailin.fr>"})
+
+    await enviar()
+    await enviar()  # mesma chave de idempotência, como numa retentativa da fila
+
+    assert post.await_count == 1
+
+
+async def test_emails_com_chaves_diferentes_sao_enviados(brevo):
+    post, redis = brevo
+    post.return_value = resposta_brevo(201, {"messageId": "<1@smtp-relay.mailin.fr>"})
+
+    await enviar(chave_idempotencia="primeira")
+    await enviar(chave_idempotencia="segunda")
+
+    assert post.await_count == 2
+
+
+async def test_recusa_do_brevo_libera_o_cooldown_e_pede_nova_tentativa(brevo):
+    post, redis = brevo
+    post.return_value = resposta_brevo(
+        400, {"code": "invalid_parameter", "message": "Sender is not valid"},
     )
 
     with pytest.raises(httpx2.HTTPStatusError):
@@ -157,19 +182,22 @@ async def test_recusa_do_resend_libera_o_cooldown_e_pede_nova_tentativa(resend):
     assert redis.apagadas == ["cooldown:email_confirmacao:1"]
 
 
-async def test_falha_de_rede_libera_o_cooldown_e_pede_nova_tentativa(resend):
-    post, redis = resend
+async def test_falha_de_rede_libera_o_cooldown_e_pede_nova_tentativa(brevo):
+    post, redis = brevo
     post.side_effect = httpx2.ConnectError("sem conexão")
 
     with pytest.raises(httpx2.ConnectError):
         await enviar()
 
     assert redis.apagadas == ["cooldown:email_confirmacao:1"]
+    # A falha não marca o e-mail como enviado: a retentativa ainda manda.
+    assert not await redis.exists("email_enviado:chave-unica")
 
 
-async def test_sem_chave_do_resend_nao_envia_nem_tenta_de_novo(resend, monkeypatch):
-    post, redis = resend
-    monkeypatch.setattr(settings, "RESEND_API_KEY", None)
+@pytest.mark.parametrize("campo, valor", [("BREVO_API_KEY", None), ("BREVO_FROM_EMAIL", "")])
+async def test_sem_configuracao_do_brevo_nao_envia_nem_tenta_de_novo(brevo, monkeypatch, campo, valor):
+    post, redis = brevo
+    monkeypatch.setattr(settings, campo, valor)
 
     await enviar()  # não levanta: tentar de novo não adiantaria
 
