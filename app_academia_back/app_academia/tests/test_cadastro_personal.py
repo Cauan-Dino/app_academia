@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from back_end.auth.auth_token_itsdangerous import serializer
 from back_end.schemas.personal_schema import CadastroPersonal
 from back_end.services.domain.personal.cadastro_personal_service import PersonalCadastroService
+from back_end.services.infra.config.settings import settings
 from back_end.services.infra.criptografia.criptografia_de_senhas import verificar_senha
 from back_end.services.infra.database.database import Base
 from back_end.services.infra.database.models import Personal
@@ -114,3 +115,44 @@ async def test_link_no_formato_antigo_e_recusado(cenario):
         await service.confirmar_email(token_antigo)
 
     assert erro.value.status_code == 400
+
+
+# --------------------------------------------------------------------------
+# e-mails permitidos
+# --------------------------------------------------------------------------
+
+
+async def test_email_fora_da_lista_nao_cadastra(cenario, monkeypatch):
+    service, db = cenario
+    monkeypatch.setattr(settings, "EMAILS_PERMITIDOS", "outra@example.com")
+
+    with pytest.raises(HTTPException) as erro:
+        await cadastrar(service)
+
+    assert erro.value.status_code == 403
+    assert await personais(db) == []
+    service.email_service.enviar_email_confirmacao.assert_not_awaited()
+
+
+async def test_email_da_lista_cadastra_mesmo_com_maiusculas_e_espacos(cenario, monkeypatch):
+    service, db = cenario
+    monkeypatch.setattr(settings, "EMAILS_PERMITIDOS", " outra@example.com , ANA@Example.com ")
+
+    await cadastrar(service)
+
+    assert len(await personais(db)) == 1
+
+
+def test_lista_aceita_o_formato_com_colchetes(monkeypatch):
+    monkeypatch.setattr(settings, "EMAILS_PERMITIDOS", '["a@gmail.com", "B@gmail.com"]')
+
+    assert settings.emails_permitidos == {"a@gmail.com", "b@gmail.com"}
+
+
+async def test_lista_vazia_deixa_o_cadastro_aberto(cenario, monkeypatch):
+    service, db = cenario
+    monkeypatch.setattr(settings, "EMAILS_PERMITIDOS", "")
+
+    await cadastrar(service)
+
+    assert len(await personais(db)) == 1

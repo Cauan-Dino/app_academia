@@ -49,5 +49,18 @@ class Settings(BaseSettings):
     # Endereço público da API, usado para montar os links dos e-mails.
     API_PUBLIC_URL: str = "http://localhost:8000"
 
+    # E-mails que podem criar conta de personal, separados por vírgula.
+    # Vazio deixa o cadastro aberto para qualquer e-mail.
+    EMAILS_PERMITIDOS: str = ""
+
+    @property
+    def emails_permitidos(self) -> frozenset[str]:
+        """Lista normalizada; tolera espaços, maiúsculas, colchetes e aspas."""
+        return frozenset(
+            email.strip().strip("[]\"' ").lower()
+            for email in self.EMAILS_PERMITIDOS.split(",")
+            if email.strip().strip("[]\"' ")
+        )
+
 settings = Settings()
 
