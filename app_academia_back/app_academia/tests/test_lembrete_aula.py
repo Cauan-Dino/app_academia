@@ -71,11 +71,16 @@ async def cenario(tmp_path):
 async def criar_aula_daqui(db, minutos: int, *, com_participante: bool = True) -> AulaFixa:
     """Cria uma aula fixa que começa daqui a N minutos, no horário local."""
     inicio = datetime.now(FUSO_HORARIO_ACADEMIA) + timedelta(minutes=minutos)
+    fim = inicio + timedelta(hours=1)
+    # Perto da meia-noite, 1 hora depois já é outro dia e o fim ficaria antes
+    # do início (o banco recusa): a aula termina no último segundo do dia.
+    if fim.date() != inicio.date():
+        fim = inicio.replace(hour=23, minute=59, second=59)
     aula = AulaFixa(
         id=1,
         dia_da_semana=tuple(DiaDaSemana)[inicio.weekday()],
         horario_inicio=inicio.time().replace(microsecond=0),
-        horario_fim=(inicio + timedelta(hours=1)).time().replace(microsecond=0),
+        horario_fim=fim.time().replace(microsecond=0),
         personal_id=1,
         capacidade_max=5,
     )

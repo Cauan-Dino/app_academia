@@ -10,6 +10,9 @@ export const colors = {
   dangerSoft: '#FFF0F0',
   success: '#237A51',
   successSoft: '#E9F8EF',
+  warning: '#8A5A00',
+  warningSoft: '#FFF6DB',
+  warningLine: '#F2DFA6',
 };
 
 export const spacing = { xs: 6, sm: 10, md: 16, lg: 24, xl: 32 };

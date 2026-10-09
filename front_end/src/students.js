@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Pressable, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { api } from './api';
 import { Button, Field, Notice } from './components';
 import { colors } from './theme';
@@ -67,14 +67,22 @@ export function StudentsScreen({ onBack, onCreate, onOpen }) {
   );
 }
 
+// Código que o back-end devolve quando o número não recebe WhatsApp.
+const TELEFONE_SEM_WHATSAPP = 'telefone_sem_whatsapp';
+
 export function StudentFormScreen({ student, onBack, onSaved }) {
   const editing = Boolean(student?.id);
   const [form, setForm] = useState({ nome: student?.nome || '', telefone: student?.telefone || '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const set = (key) => (value) => setForm((current) => ({ ...current, [key]: value }));
+  const [semWhatsapp, setSemWhatsapp] = useState('');
+  const set = (key) => (value) => {
+    setForm((current) => ({ ...current, [key]: value }));
+    // O aviso vale para o número que foi verificado; mudou o número, some o aviso.
+    if (key === 'telefone') setSemWhatsapp('');
+  };
 
-  const submit = async () => {
+  const submit = async (confirmarSemWhatsapp = false) => {
     const nome = form.nome.trim();
     const telefone = form.telefone.trim();
     if (!nome || !telefone) return setError('Preencha o nome e o telefone.');
@@ -86,16 +94,27 @@ export function StudentFormScreen({ student, onBack, onSaved }) {
         const mudancas = {};
         if (nome !== student.nome) mudancas.nome = nome;
         if (telefone !== student.telefone) mudancas.telefone = telefone;
-        if (Object.keys(mudancas).length) await api.updateStudent(student.id, mudancas);
-      } else {
-        const resposta = await api.createStudent({ nome, telefone });
-        if (resposta?.telefone_verificado === false) {
-          Alert.alert('Confira o telefone', resposta.message);
+        if (Object.keys(mudancas).length) {
+          await api.updateStudent(student.id, {
+            ...mudancas,
+            ...(confirmarSemWhatsapp ? { confirmar_telefone_sem_whatsapp: true } : {}),
+          });
         }
+      } else {
+        await api.createStudent({
+          nome,
+          telefone,
+          ...(confirmarSemWhatsapp ? { confirmar_telefone_sem_whatsapp: true } : {}),
+        });
       }
       onSaved();
     } catch (requestError) {
-      setError(requestError.message);
+      if (requestError.detail?.codigo === TELEFONE_SEM_WHATSAPP) {
+        setSemWhatsapp(requestError.message);
+      } else {
+        setSemWhatsapp('');
+        setError(requestError.message);
+      }
     } finally {
       setBusy(false);
     }
@@ -107,7 +126,16 @@ export function StudentFormScreen({ student, onBack, onSaved }) {
       <View style={s.card}>
         <Field label="Nome completo" value={form.nome} onChangeText={set('nome')} placeholder="Nome do aluno" />
         <Field label="Telefone" value={form.telefone} onChangeText={set('telefone')} placeholder="(85) 99999-9999" keyboardType="phone-pad" style={{ marginTop: 16 }} />
-        <Button title={editing ? 'Salvar alterações' : 'Cadastrar aluno'} onPress={submit} loading={busy} style={{ marginTop: 22 }} />
+        {semWhatsapp ? (
+          <View style={styles.aviso}>
+            <Text style={styles.avisoTitulo}>Número sem WhatsApp</Text>
+            <Text style={styles.avisoTexto}>{semWhatsapp} Se o número estiver certo, você pode {editing ? 'salvar' : 'cadastrar'} assim mesmo, mas o aluno não vai receber as mensagens pelo WhatsApp.</Text>
+            <Button title="Alterar telefone" onPress={() => setSemWhatsapp('')} disabled={busy} style={{ marginTop: 14 }} />
+            <Button title={editing ? 'Confirmar e salvar' : 'Confirmar e cadastrar'} variant="secondary" onPress={() => submit(true)} loading={busy} style={{ marginTop: 10 }} />
+          </View>
+        ) : (
+          <Button title={editing ? 'Salvar alterações' : 'Cadastrar aluno'} onPress={() => submit()} loading={busy} style={{ marginTop: 22 }} />
+        )}
       </View>
     </ManagementShell>
   );
@@ -191,3 +219,9 @@ export function StudentDetailScreen({ student: initialStudent, onBack, onEdit, o
     </ManagementShell>
   );
 }
+
+const styles = StyleSheet.create({
+  aviso: { backgroundColor: colors.warningSoft, borderColor: colors.warningLine, borderWidth: 1, borderRadius: 15, padding: 15, marginTop: 22 },
+  avisoTitulo: { color: colors.warning, fontSize: 16, fontWeight: '800', marginBottom: 6 },
+  avisoTexto: { color: colors.ink, lineHeight: 20 },
+});

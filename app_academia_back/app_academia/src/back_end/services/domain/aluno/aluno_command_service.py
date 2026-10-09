@@ -12,6 +12,19 @@ from back_end.services.infra.redis_service.notificacao_cache import invalidar_ca
 from back_end.services.domain.chatbot.whatsapp_service import WhatsappService
 from back_end.services.infra.config.settings import settings
 
+
+def erro_telefone_sem_whatsapp() -> HTTPException:
+    """O código deixa o app mostrar o aviso com as opções de corrigir o número
+    ou salvar assim mesmo (reenviando com confirmar_telefone_sem_whatsapp)."""
+    return HTTPException(
+        status_code=400,
+        detail={
+            "codigo": "telefone_sem_whatsapp",
+            "message": "Esse número não recebe WhatsApp. Confira se foi digitado corretamente.",
+        },
+    )
+
+
 class AlunoCommandService:
     def __init__(
         self,
@@ -69,18 +82,21 @@ class AlunoCommandService:
             nome_personal=access_token.get("nome", ""),
         )
 
-        if telefone_verificado is False:
-            raise HTTPException(
-                status_code=400,
-                detail="Esse número não recebe WhatsApp. Confira se foi digitado corretamente."
-            )
+        if telefone_verificado is False and not body.confirmar_telefone_sem_whatsapp:
+            raise erro_telefone_sem_whatsapp()
 
         if telefone_verificado is None:
             mensagem = "Aluno cadastrado. Não foi possível confirmar o número no WhatsApp agora."
+        elif telefone_verificado is False:
+            mensagem = "Aluno cadastrado. Esse número não recebe WhatsApp, então o aluno não vai receber as mensagens."
         else:
             mensagem = "Aluno cadastrado com sucesso! Enviamos uma mensagem de boas-vindas."
 
-        informacoes_aluno = Alunos(**body.model_dump(), telefone_verificado=telefone_verificado, personal_id=personal_id)
+        informacoes_aluno = Alunos(
+            **body.model_dump(exclude={"confirmar_telefone_sem_whatsapp"}),
+            telefone_verificado=telefone_verificado,
+            personal_id=personal_id,
+        )
         self.db.add(informacoes_aluno)
 
         try:
@@ -138,7 +154,7 @@ class AlunoCommandService:
 
 
         # Pega apenas os campos que foram enviados no payload, excluindo os que não foram enviados
-        dados_atualizacao = body.model_dump(exclude_unset=True)
+        dados_atualizacao = body.model_dump(exclude_unset=True, exclude={"confirmar_telefone_sem_whatsapp"})
         if not dados_atualizacao:
             raise HTTPException(
                 status_code=400,
@@ -184,11 +200,8 @@ class AlunoCommandService:
                 nome_aluno=dados_atualizacao.get('nome', alunos.nome),
                 nome_personal=access_token.get("nome", ""),
             )
-            if verificado is False:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Esse número não recebe WhatsApp. Confira se foi digitado corretamente.",
-            )
+            if verificado is False and not body.confirmar_telefone_sem_whatsapp:
+                raise erro_telefone_sem_whatsapp()
             alunos.telefone_verificado = verificado
 
         # Aplica as alterações no objeto
