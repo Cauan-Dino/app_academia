@@ -7,6 +7,7 @@ from back_end.core.logging.logs_settings import logger
 from sqlalchemy.exc import IntegrityError
 from back_end.services.infra.criptografia.criptografia_de_senhas import criptografar_senha
 from back_end.services.infra.email.email_service import EmailService
+from back_end.services.infra.config.settings import settings
 from back_end.auth.auth_token_itsdangerous import (
     LINK_INVALIDO,
     gerar_token_confirmacao_email,
@@ -45,6 +46,15 @@ class PersonalCadastroService:
 
 
     async def cadastro_personal(self, body: CadastroPersonal) -> dict:
+        # O schema já deixou o e-mail em minúsculas e sem espaços.
+        permitidos = settings.emails_permitidos
+        if permitidos and body.email not in permitidos:
+            logger.info("Cadastro recusado: e-mail fora da lista de permitidos")
+            raise HTTPException(
+                status_code=403,
+                detail="O cadastro está disponível só para convidados.",
+            )
+
         query_usuario_email = select(Personal).where(Personal.email == body.email) # Verifica se o EMAIL já está cadastrado
         email_do_usuario = (await self.db.execute(query_usuario_email)).scalar_one_or_none()
 

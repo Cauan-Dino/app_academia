@@ -4,6 +4,7 @@
     "slug": "treinopro",
     "version": "1.0.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "scheme": "treinopro",
     "ios": {
@@ -13,14 +14,33 @@
     "android": {
       "package": "com.appacademia.treinopro",
       "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#121815"
       },
       "googleServicesFile": "./google-services.json"
     },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
     "plugins": [
       "expo-secure-store",
       "expo-status-bar",
-      "expo-notifications"
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#121815"
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 160,
+          "resizeMode": "contain",
+          "backgroundColor": "#121815"
+        }
+      ]
     ],
     "extra": {
       "eas": {

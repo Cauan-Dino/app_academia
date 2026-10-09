@@ -1,9 +1,9 @@
 import React from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { colors } from './theme';
 
 export function Logo() {
-  return <View style={styles.logo}><Text style={styles.logoMark}>T</Text></View>;
+  return <Image source={require('../assets/logo.png')} style={styles.logo} accessibilityLabel="TreinoPro" />;
 }
 
 export function Field({ label, error, style, ...props }) {
@@ -29,8 +29,7 @@ export function Notice({ type = 'success', children }) {
 }
 
 const styles = StyleSheet.create({
-  logo: { width: 48, height: 48, borderRadius: 15, backgroundColor: colors.ink, alignItems: 'center', justifyContent: 'center' },
-  logoMark: { color: colors.primary, fontSize: 27, fontWeight: '900', fontStyle: 'italic' },
+  logo: { width: 48, height: 48 },
   label: { color: colors.ink, fontSize: 14, fontWeight: '700', marginBottom: 7 },
   input: { height: 54, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, borderRadius: 14, paddingHorizontal: 16, color: colors.ink, fontSize: 16 },
   inputError: { borderColor: colors.danger },
