@@ -9,7 +9,8 @@ class PersonalClientUtils:
         return {
             'nome': aluno.nome,
             'id': aluno.id,
-            'telefone': aluno.telefone
+            'telefone': aluno.telefone,
+            'telefone_verificado': aluno.telefone_verificado,
         }
     
 

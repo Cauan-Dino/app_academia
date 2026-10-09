@@ -64,6 +64,10 @@ class Alunos(Base):
     # None = ainda não foi possível confirmar se o número recebe WhatsApp.
     telefone_verificado: Mapped[bool | None] = mapped_column(nullable=True)
 
+    # Mensagem de boas-vindas que verificou o número. A Meta aceita o envio na
+    # hora e só avisa depois, pelo webhook de status, se o número não tem WhatsApp.
+    whatsapp_mensagem_verificacao_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+
     personal_id: Mapped[int] = mapped_column(ForeignKey('personal.id', name="fk_personal_id"), nullable=False)
 
     participantes_aula_relationship: Mapped[list["ParticipanteAula"]] = relationship(

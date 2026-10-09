@@ -9,7 +9,7 @@ from redis.asyncio import Redis
 from back_end.services.domain.aluno.aluno_query_service import AlunoQueryService 
 from back_end.services.domain.aluno.aluno_utils import PersonalClientUtils
 from back_end.services.infra.redis_service.notificacao_cache import invalidar_cache_notificacoes
-from back_end.services.domain.chatbot.whatsapp_service import WhatsappService
+from back_end.services.domain.chatbot.whatsapp_service import ResultadoTemplate, WhatsappService
 from back_end.services.infra.config.settings import settings
 
 
@@ -44,11 +44,13 @@ class AlunoCommandService:
         telefone: str,
         nome_aluno: str,
         nome_personal: str,
-    ) -> bool | None:
+    ) -> ResultadoTemplate:
         """Diz se o número recebe WhatsApp, enviando o template de boas-vindas.
 
-        Roda antes de gravar o aluno: True = número aceito, False = não recebe
-        WhatsApp, None = não foi possível confirmar agora.
+        Roda antes de gravar o aluno: aceito True = número aceito, False = não
+        recebe WhatsApp, None = não foi possível confirmar agora. O mensagem_id
+        fica salvo no aluno porque a Meta pode avisar a falha só depois, pelo
+        webhook de status (VerificacaoTelefoneService).
         """
         resultado = await self.whatsapp_service.enviar_template(
             telefone=telefone,
@@ -76,11 +78,12 @@ class AlunoCommandService:
 
         # Tenta enviar uma notificação pro telefone do aluno enviado no payload
         # Se Falhar exibe uma mensagem de erro, se não cadastra
-        telefone_verificado = await self._enviar_notificacao_no_telefone_no_whatsapp_do_aluno(
+        verificacao = await self._enviar_notificacao_no_telefone_no_whatsapp_do_aluno(
             telefone=body.telefone,
             nome_aluno=body.nome,
             nome_personal=access_token.get("nome", ""),
         )
+        telefone_verificado = verificacao.aceito
 
         if telefone_verificado is False and not body.confirmar_telefone_sem_whatsapp:
             raise erro_telefone_sem_whatsapp()
@@ -95,6 +98,7 @@ class AlunoCommandService:
         informacoes_aluno = Alunos(
             **body.model_dump(exclude={"confirmar_telefone_sem_whatsapp"}),
             telefone_verificado=telefone_verificado,
+            whatsapp_mensagem_verificacao_id=verificacao.mensagem_id,
             personal_id=personal_id,
         )
         self.db.add(informacoes_aluno)
@@ -195,14 +199,16 @@ class AlunoCommandService:
             )
 
         if 'telefone' in dados_atualizacao:
-            verificado  = await self._enviar_notificacao_no_telefone_no_whatsapp_do_aluno(
+            verificacao = await self._enviar_notificacao_no_telefone_no_whatsapp_do_aluno(
                 telefone=dados_atualizacao['telefone'],
                 nome_aluno=dados_atualizacao.get('nome', alunos.nome),
                 nome_personal=access_token.get("nome", ""),
             )
-            if verificado is False and not body.confirmar_telefone_sem_whatsapp:
+            if verificacao.aceito is False and not body.confirmar_telefone_sem_whatsapp:
                 raise erro_telefone_sem_whatsapp()
-            alunos.telefone_verificado = verificado
+            alunos.telefone_verificado = verificacao.aceito
+            # Troca o id: uma falha que chegue depois para o número antigo é ignorada.
+            alunos.whatsapp_mensagem_verificacao_id = verificacao.mensagem_id
 
         # Aplica as alterações no objeto
         for campo, valor in dados_atualizacao.items():
