@@ -11,6 +11,7 @@ from fastapi import Response
 from back_end.core.logging.logs_settings import logger
 from sqlalchemy import select
 from back_end.services.infra.database.models import Alunos
+from back_end.services.domain.aluno.verificacao_telefone_service import VerificacaoTelefoneService
 
 class ChatbotConversationService:
     """Direciona mensagens recebidas conforme a sessão e a opção escolhida."""
@@ -23,6 +24,7 @@ class ChatbotConversationService:
             chatbot_options_service: ChatBotOptionsService,
             chatbot_solicitacao_mudanca_service: SolicitacaoReagendamentoAulaService,
             utils_chatbot_service: UtilsChatbotService,
+            verificacao_telefone_service: VerificacaoTelefoneService,
         ):
         """Recebe as dependências de envio, consulta, reagendamento e sessão."""
         self.whatzap_service = whatzap_service
@@ -31,6 +33,7 @@ class ChatbotConversationService:
         self.chatbot_options_service = chatbot_options_service
         self.chatbot_solicitacao_mudanca_service = chatbot_solicitacao_mudanca_service
         self.utils_chatbot_service = utils_chatbot_service
+        self.verificacao_telefone_service = verificacao_telefone_service
 
 
     async def main(
@@ -48,11 +51,19 @@ class ChatbotConversationService:
         Raises:
             RedisError: Se ocorrer uma falha ao consultar ou salvar dados no Redis.
         """
-        # Pega a mensagem do aluno
-        resposta_usuario = await self.whatzap_service.processar_mensagem(
+        payload = await self.whatzap_service.ler_webhook(
             request=request,
             assinatura=assinatura
         )
+
+        # Status "failed" das mensagens enviadas: é por eles que a Meta informa
+        # que o número de um aluno não recebe WhatsApp.
+        falhas = self.whatzap_service.extrair_falhas_de_entrega(payload)
+        if falhas:
+            await self.verificacao_telefone_service.registrar_falhas_de_entrega(falhas)
+
+        # Pega a mensagem do aluno
+        resposta_usuario = self.whatzap_service.extrair_mensagem_texto(payload)
 
         if resposta_usuario is None:
             return Response(status_code=200)

@@ -56,6 +56,9 @@ export function StudentsScreen({ onBack, onCreate, onOpen }) {
                 <View style={s.grow}>
                   <Text style={s.cardTitle}>{student.nome}</Text>
                   <Text style={s.cardText}>{student.telefone}</Text>
+                  {student.telefone_verificado === false ? (
+                    <View style={styles.seloSemWhatsapp}><Text style={styles.seloSemWhatsappTexto}>Sem WhatsApp</Text></View>
+                  ) : null}
                 </View>
                 <Text style={{ color: colors.muted, fontSize: 28 }}>›</Text>
               </View>
@@ -186,6 +189,13 @@ export function StudentDetailScreen({ student: initialStudent, onBack, onEdit, o
   return (
     <ManagementShell title={student.nome} subtitle={student.telefone} onBack={onBack} refreshing={loading} action={<Pressable onPress={() => onEdit(student)}><Text style={s.link}>Editar</Text></Pressable>}>
       {error ? <Notice type="error">{error}</Notice> : null}
+      {student.telefone_verificado === false ? (
+        <View style={[styles.aviso, { marginTop: 0, marginBottom: 18 }]}>
+          <Text style={styles.avisoTitulo}>Número sem WhatsApp</Text>
+          <Text style={styles.avisoTexto}>O WhatsApp informou que esse número não recebe mensagens, então o aluno não vai receber os avisos do bot. Se o número estiver certo, não precisa fazer nada.</Text>
+          <Button title="Alterar telefone" onPress={() => onEdit(student)} style={{ marginTop: 14 }} />
+        </View>
+      ) : null}
       <View style={s.row}>
         <Stat value={classes.length} label={classes.length === 1 ? 'aula semanal' : 'aulas semanais'} />
         <Stat value={`#${student.id}`} label="identificador" />
@@ -224,4 +234,6 @@ const styles = StyleSheet.create({
   aviso: { backgroundColor: colors.warningSoft, borderColor: colors.warningLine, borderWidth: 1, borderRadius: 15, padding: 15, marginTop: 22 },
   avisoTitulo: { color: colors.warning, fontSize: 16, fontWeight: '800', marginBottom: 6 },
   avisoTexto: { color: colors.ink, lineHeight: 20 },
+  seloSemWhatsapp: { alignSelf: 'flex-start', marginTop: 8, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, backgroundColor: colors.warningSoft, borderColor: colors.warningLine, borderWidth: 1 },
+  seloSemWhatsappTexto: { color: colors.warning, fontWeight: '900', fontSize: 11 },
 });

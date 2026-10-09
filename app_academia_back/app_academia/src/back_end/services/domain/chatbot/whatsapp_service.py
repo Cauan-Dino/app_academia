@@ -12,6 +12,7 @@ from back_end.services.infra.config.settings import settings
 import httpx2 
 from back_end.core.logging.logs_settings import logger
 import json
+from dataclasses import dataclass
 from back_end.services.infra.utils.normalizar_telefone import normalizar_telefone_recebido
 from back_end.services.infra.http.cliente_http import cliente_http
 
@@ -19,6 +20,24 @@ from back_end.services.infra.http.cliente_http import cliente_http
 # recebe WhatsApp. Outros códigos (token, template, limite) não dizem nada sobre
 # o número e são registrados no log para que esta lista possa ser ajustada.
 CODIGOS_DESTINATARIO_INVALIDO = {131026}
+
+
+@dataclass(frozen=True)
+class ResultadoTemplate:
+    """aceito: True = a Meta aceitou, False = recusou o destinatário, None = inconclusivo.
+
+    Aceitar não garante a entrega: a falha pode chegar depois pelo webhook de
+    status, identificada pelo mensagem_id.
+    """
+    aceito: bool | None
+    mensagem_id: str | None = None
+
+
+@dataclass(frozen=True)
+class FalhaDeEntrega:
+    """Status "failed" recebido pelo webhook para uma mensagem enviada."""
+    mensagem_id: str
+    codigos: frozenset[int]
 
 
 class WhatsappService:
@@ -174,10 +193,10 @@ class WhatsappService:
         nome_template: str,
         parametros: dict[str, str],
         idioma: str = "pt_BR",
-    ) -> bool | None:
+    ) -> ResultadoTemplate:
         """Envia um template aprovado e informa se o número recebe WhatsApp.
 
-        Retorna True quando a Meta aceita o envio, False quando ela recusa por
+        aceito é True quando a Meta aceita o envio, False quando ela recusa por
         causa do destinatário e None quando não dá para concluir nada (falha de
         rede, credencial inválida, template inexistente). None nunca deve ser
         tratado como número inválido.
@@ -225,10 +244,10 @@ class WhatsappService:
                 "Não foi possível contatar a Meta para enviar o template",
                 exc_info=False,
             )
-            return None
+            return ResultadoTemplate(aceito=None)
 
         if not response.is_error:
-            return True
+            return ResultadoTemplate(aceito=True, mensagem_id=self._id_da_mensagem(response))
 
         try:
             erro_meta = response.json().get("error", {})
@@ -249,22 +268,33 @@ class WhatsappService:
         )
 
         if codigo in CODIGOS_DESTINATARIO_INVALIDO:
-            return False
+            return ResultadoTemplate(aceito=False)
 
         # Qualquer outro motivo (token, template, limite) não diz nada sobre o número.
+        return ResultadoTemplate(aceito=None)
+
+
+    @staticmethod
+    def _id_da_mensagem(response: httpx2.Response) -> str | None:
+        """ID (wamid) que a Meta devolve ao aceitar o envio: {"messages": [{"id": ...}]}."""
+        try:
+            mensagens = response.json().get("messages") or []
+        except ValueError:
+            return None
+        if mensagens and isinstance(mensagens[0], dict):
+            return mensagens[0].get("id")
         return None
 
 
-    async def processar_mensagem(
+    async def ler_webhook(
         self,
         request: Request,
-        assinatura: str | None 
-    ) -> dict[str, str] | None:
-        """Valida o webhook e extrai a primeira mensagem de texto com remetente.
+        assinatura: str | None,
+    ) -> dict:
+        """Valida a assinatura do webhook e devolve o corpo em JSON.
 
-        Retorna telefone e texto sem espaços externos e com casefold aplicado.
-        Eventos de status ou sem texto retornam None. JSON inválido gera
-        HTTPException com status 400; falhas de assinatura também são propagadas.
+        JSON inválido gera HTTPException com status 400; falhas de assinatura
+        também são propagadas.
         """
         # Precisa pegar os bytes originais antes de ler o JSON
         corpo = await request.body()
@@ -272,40 +302,65 @@ class WhatsappService:
             corpo=corpo,
             assinatura_recebida=assinatura,
         )
-        
+
         try:
-            payload = json.loads(corpo)
+            return json.loads(corpo)
         except json.JSONDecodeError as erro:
             raise HTTPException(
                 status_code=400,
                 detail="Corpo JSON inválido.",
             ) from erro
-        
+
+
+    @staticmethod
+    def _valores_de_mensagens(payload: dict):
         for entry in payload.get("entry", []):
             for change in entry.get("changes", []):
-                if change.get("field") != "messages":
+                if change.get("field") == "messages":
+                    yield change.get("value", {})
+
+
+    def extrair_mensagem_texto(self, payload: dict) -> dict[str, str] | None:
+        """Extrai a primeira mensagem de texto com remetente.
+
+        Retorna telefone e texto sem espaços externos e com casefold aplicado.
+        Eventos de status ou sem texto retornam None.
+        """
+        for value in self._valores_de_mensagens(payload):
+            for mensagem in value.get("messages", []):
+                if mensagem.get("type") != "text":
                     continue
 
-                value = change.get("value", {})
-
-                for mensagem in value.get("messages", []):
-                    if mensagem.get("type") != "text":
-                        continue
-
-                    # Pega o telefone e o texto da pessoa que ta mandando mensagem pro bot
-                    telefone = mensagem.get("from")
-                    texto = (
-                        mensagem
-                        .get("text", {})
-                        .get("body", "")
-                        .strip()
-                        .casefold()
-                    )
-                    if telefone:
-                        return {
-                            "texto": texto,
-                            "telefone": normalizar_telefone_recebido(telefone),
-                        }
+                # Pega o telefone e o texto da pessoa que ta mandando mensagem pro bot
+                telefone = mensagem.get("from")
+                texto = (
+                    mensagem
+                    .get("text", {})
+                    .get("body", "")
+                    .strip()
+                    .casefold()
+                )
+                if telefone:
+                    return {
+                        "texto": texto,
+                        "telefone": normalizar_telefone_recebido(telefone),
+                    }
 
         # É um evento de status ou outro evento não processado.
         return None
+
+
+    def extrair_falhas_de_entrega(self, payload: dict) -> list[FalhaDeEntrega]:
+        """Lista os status "failed" do webhook com os códigos de erro da Meta."""
+        falhas = []
+        for value in self._valores_de_mensagens(payload):
+            for status in value.get("statuses", []):
+                if status.get("status") != "failed" or not status.get("id"):
+                    continue
+                codigos = frozenset(
+                    erro["code"]
+                    for erro in status.get("errors", [])
+                    if isinstance(erro.get("code"), int)
+                )
+                falhas.append(FalhaDeEntrega(mensagem_id=status["id"], codigos=codigos))
+        return falhas

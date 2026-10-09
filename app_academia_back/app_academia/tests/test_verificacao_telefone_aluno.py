@@ -11,6 +11,7 @@ from pydantic import ValidationError
 
 from back_end.schemas.cadastrar_aluno import AlterarInformacoesAluno, CadastrarAluno
 from back_end.services.domain.aluno.aluno_command_service import AlunoCommandService
+from back_end.services.domain.chatbot.whatsapp_service import ResultadoTemplate
 from back_end.services.infra.database.database import Base
 from back_end.services.infra.database.models import Alunos, Personal
 
@@ -71,7 +72,7 @@ async def cadastrar(service, telefone="5585999990001", **campos):
 
 async def test_numero_valido_marca_verificado(cenario):
     service, db, whatsapp = cenario
-    whatsapp.enviar_template.return_value = True
+    whatsapp.enviar_template.return_value = ResultadoTemplate(aceito=True, mensagem_id="wamid.boas-vindas")
 
     resposta = await cadastrar(service)
 
@@ -79,12 +80,14 @@ async def test_numero_valido_marca_verificado(cenario):
     assert "boas-vindas" in resposta["message"]
     aluno = await db.scalar(select(Alunos).where(Alunos.nome == "João Silva"))
     assert aluno.telefone_verificado is True
+    # Guardado para ligar ao aluno a falha que a Meta pode avisar depois.
+    assert aluno.whatsapp_mensagem_verificacao_id == "wamid.boas-vindas"
 
 
 async def test_numero_sem_whatsapp_recusa_o_cadastro(cenario):
     """Número inválido não pode deixar aluno fantasma: a verificação roda antes do commit."""
     service, db, whatsapp = cenario
-    whatsapp.enviar_template.return_value = False
+    whatsapp.enviar_template.return_value = ResultadoTemplate(aceito=False)
 
     with pytest.raises(HTTPException) as erro:
         await cadastrar(service)
@@ -100,7 +103,7 @@ async def test_numero_sem_whatsapp_recusa_o_cadastro(cenario):
 
 async def test_numero_sem_whatsapp_confirmado_cadastra_como_nao_verificado(cenario):
     service, db, whatsapp = cenario
-    whatsapp.enviar_template.return_value = False
+    whatsapp.enviar_template.return_value = ResultadoTemplate(aceito=False)
 
     resposta = await cadastrar(service, confirmar_telefone_sem_whatsapp=True)
 
@@ -112,7 +115,7 @@ async def test_numero_sem_whatsapp_confirmado_cadastra_como_nao_verificado(cenar
 
 async def test_falha_na_meta_nao_marca_numero_como_invalido(cenario):
     service, db, whatsapp = cenario
-    whatsapp.enviar_template.return_value = None
+    whatsapp.enviar_template.return_value = ResultadoTemplate(aceito=None)
 
     resposta = await cadastrar(service)
 
@@ -124,7 +127,7 @@ async def test_falha_na_meta_nao_marca_numero_como_invalido(cenario):
 
 async def test_template_recebe_nome_do_aluno_e_do_personal(cenario):
     service, _, whatsapp = cenario
-    whatsapp.enviar_template.return_value = True
+    whatsapp.enviar_template.return_value = ResultadoTemplate(aceito=True, mensagem_id="wamid.boas-vindas")
 
     await cadastrar(service, telefone="5585988887777")
 
@@ -199,7 +202,7 @@ async def alterar(service, aluno_id, **campos):
 async def test_alterar_para_numero_sem_whatsapp_recusa_e_nao_altera(aluno_existente):
     """A verificação roda antes do commit: número recusado deixa o aluno intacto."""
     service, db, whatsapp, aluno = aluno_existente
-    whatsapp.enviar_template.return_value = False
+    whatsapp.enviar_template.return_value = ResultadoTemplate(aceito=False)
 
     with pytest.raises(HTTPException) as erro:
         await alterar(service, aluno.id, telefone="85988887777")
@@ -213,7 +216,7 @@ async def test_alterar_para_numero_sem_whatsapp_recusa_e_nao_altera(aluno_existe
 
 async def test_alterar_para_numero_sem_whatsapp_confirmado_salva_como_nao_verificado(aluno_existente):
     service, db, whatsapp, aluno = aluno_existente
-    whatsapp.enviar_template.return_value = False
+    whatsapp.enviar_template.return_value = ResultadoTemplate(aceito=False)
 
     await alterar(service, aluno.id, telefone="85988887777", confirmar_telefone_sem_whatsapp=True)
 
@@ -235,7 +238,7 @@ async def test_so_a_confirmacao_sem_dados_nao_conta_como_alteracao(aluno_existen
 async def test_alterar_nome_e_telefone_juntos_envia_uma_mensagem_so(aluno_existente):
     """A verificação fica fora do laço que aplica os campos."""
     service, db, whatsapp, aluno = aluno_existente
-    whatsapp.enviar_template.return_value = True
+    whatsapp.enviar_template.return_value = ResultadoTemplate(aceito=True, mensagem_id="wamid.boas-vindas")
 
     await alterar(service, aluno.id, nome="João Pereira", telefone="85988887777")
 
@@ -247,6 +250,8 @@ async def test_alterar_nome_e_telefone_juntos_envia_uma_mensagem_so(aluno_existe
     assert argumentos["parametros"]["nome_do_aluno"] == "João Pereira"
     await db.refresh(aluno)
     assert aluno.telefone == "5585988887777"
+    # O id da mensagem do número novo substitui o do antigo.
+    assert aluno.whatsapp_mensagem_verificacao_id == "wamid.boas-vindas"
 
 
 async def test_alterar_so_o_nome_nao_dispara_envio(aluno_existente):
@@ -264,7 +269,7 @@ async def test_alterar_so_o_nome_nao_dispara_envio(aluno_existente):
 async def test_meta_indisponivel_altera_e_marca_como_pendente(aluno_existente):
     """None é 'não deu para confirmar', não 'número inválido': não pode bloquear."""
     service, db, whatsapp, aluno = aluno_existente
-    whatsapp.enviar_template.return_value = None
+    whatsapp.enviar_template.return_value = ResultadoTemplate(aceito=None)
 
     await alterar(service, aluno.id, telefone="85988887777")
 
@@ -276,7 +281,7 @@ async def test_meta_indisponivel_altera_e_marca_como_pendente(aluno_existente):
 async def test_alterar_so_o_telefone_usa_o_nome_do_banco(aluno_existente):
     """body.nome é None quando só o telefone muda: o template precisa do nome gravado."""
     service, db, whatsapp, aluno = aluno_existente
-    whatsapp.enviar_template.return_value = True
+    whatsapp.enviar_template.return_value = ResultadoTemplate(aceito=True, mensagem_id="wamid.boas-vindas")
 
     await alterar(service, aluno.id, telefone="85988887777")
 
@@ -313,7 +318,7 @@ async def test_telefone_gravado_no_formato_antigo_envia_uma_vez_e_normaliza(alun
     service, db, whatsapp, aluno = aluno_existente
     aluno.telefone = "85999990001"
     await db.commit()
-    whatsapp.enviar_template.return_value = True
+    whatsapp.enviar_template.return_value = ResultadoTemplate(aceito=True, mensagem_id="wamid.boas-vindas")
 
     await alterar(service, aluno.id, telefone="85999990001")
 
