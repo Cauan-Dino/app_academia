@@ -62,9 +62,9 @@ async def cenario():
     await engine.dispose()
 
 
-async def cadastrar(service, telefone="5585999990001"):
+async def cadastrar(service, telefone="5585999990001", **campos):
     return await service.cadastrar_aluno(
-        body=CadastrarAluno(nome="João Silva", telefone=telefone),
+        body=CadastrarAluno(nome="João Silva", telefone=telefone, **campos),
         access_token=ACCESS_TOKEN,
     )
 
@@ -90,10 +90,24 @@ async def test_numero_sem_whatsapp_recusa_o_cadastro(cenario):
         await cadastrar(service)
 
     assert erro.value.status_code == 400
-    assert "não recebe WhatsApp" in erro.value.detail
+    # O código é o que o app usa para mostrar as opções de corrigir ou confirmar.
+    assert erro.value.detail["codigo"] == "telefone_sem_whatsapp"
+    assert "não recebe WhatsApp" in erro.value.detail["message"]
     # Sem linha no banco, o personal pode corrigir o número e tentar de novo
     # sem esbarrar no 409 do nome duplicado.
     assert await db.scalar(select(func.count()).select_from(Alunos)) == 0
+
+
+async def test_numero_sem_whatsapp_confirmado_cadastra_como_nao_verificado(cenario):
+    service, db, whatsapp = cenario
+    whatsapp.enviar_template.return_value = False
+
+    resposta = await cadastrar(service, confirmar_telefone_sem_whatsapp=True)
+
+    assert resposta["telefone_verificado"] is False
+    assert "não recebe WhatsApp" in resposta["message"]
+    aluno = await db.scalar(select(Alunos).where(Alunos.nome == "João Silva"))
+    assert aluno.telefone_verificado is False
 
 
 async def test_falha_na_meta_nao_marca_numero_como_invalido(cenario):
@@ -191,10 +205,31 @@ async def test_alterar_para_numero_sem_whatsapp_recusa_e_nao_altera(aluno_existe
         await alterar(service, aluno.id, telefone="85988887777")
 
     assert erro.value.status_code == 400
-    assert "não recebe WhatsApp" in erro.value.detail
+    assert erro.value.detail["codigo"] == "telefone_sem_whatsapp"
     await db.refresh(aluno)
     assert aluno.telefone == "5585999990001"
     assert aluno.telefone_verificado is True
+
+
+async def test_alterar_para_numero_sem_whatsapp_confirmado_salva_como_nao_verificado(aluno_existente):
+    service, db, whatsapp, aluno = aluno_existente
+    whatsapp.enviar_template.return_value = False
+
+    await alterar(service, aluno.id, telefone="85988887777", confirmar_telefone_sem_whatsapp=True)
+
+    await db.refresh(aluno)
+    assert aluno.telefone == "5585988887777"
+    assert aluno.telefone_verificado is False
+
+
+async def test_so_a_confirmacao_sem_dados_nao_conta_como_alteracao(aluno_existente):
+    service, _, _, aluno = aluno_existente
+
+    with pytest.raises(HTTPException) as erro:
+        await alterar(service, aluno.id, confirmar_telefone_sem_whatsapp=True)
+
+    assert erro.value.status_code == 400
+    assert "Nenhuma informação" in erro.value.detail
 
 
 async def test_alterar_nome_e_telefone_juntos_envia_uma_mensagem_so(aluno_existente):

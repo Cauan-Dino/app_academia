@@ -9,6 +9,8 @@ class CadastrarAluno(BaseModel):
 
     nome: str
     telefone: str = Field(..., min_length=12, max_length=15)
+    # O personal viu o aviso de que o número não recebe WhatsApp e quer cadastrar assim mesmo.
+    confirmar_telefone_sem_whatsapp: bool = False
 
     @field_validator('telefone', mode='before')
     @classmethod
@@ -24,6 +26,8 @@ class AlterarInformacoesAluno(BaseModel):
 
     nome: str | None = None
     telefone: str | None = Field(default=None, min_length=12, max_length=15)
+    # O personal viu o aviso de que o número não recebe WhatsApp e quer salvar assim mesmo.
+    confirmar_telefone_sem_whatsapp: bool = False
 
     @field_validator('telefone', mode='before')
     @classmethod
