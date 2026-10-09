@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from back_end.services.infra.database.database import sessao_db
 from back_end.services.domain.personal.delete_personal_service import DeletePersonalAcountService
 from back_end.services.infra.email.email_service import EmailService
 from back_end.schemas.personal_schema import DeletarContaPersonal
 from back_end.auth.jwt_token import verificar_access_token
+from back_end.core.paginas_html import pagina_conta_excluida, pagina_erro
 
 router = APIRouter(tags=['Excluir conta do Personal'])
 
@@ -19,13 +21,20 @@ async def deletar_conta(
 
 
 
-@router.get('/confirmar-exclusao-conta')
+# Endpoint do link do email enviado
+@router.get('/confirmar-exclusao-conta', response_class=HTMLResponse)
 async def confirmar_exclusao_conta(
     token: str,
     db: AsyncSession = Depends(sessao_db)
     ):
     service = DeletePersonalAcountService(db=db)
-    return await service.confirmar_exclusao_de_conta(token)
+    try:
+        await service.confirmar_exclusao_de_conta(token)
+    except HTTPException as erro:
+        # Mesmo status code e mensagem de antes, só que em página HTML
+        return pagina_erro(erro)
+
+    return pagina_conta_excluida()
 
 
 
