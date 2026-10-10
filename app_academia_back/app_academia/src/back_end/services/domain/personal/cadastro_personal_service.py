@@ -134,7 +134,7 @@ class PersonalCadastroService:
 
         # Verifica se o email já tá verificado
         if usuario.email_verificado is True:
-            return {"detail": "E-mail já confirmado anteriormente."}
+            return {"message": "E-mail já confirmado anteriormente.", "status": "ja_confirmado"}
 
         # Link de um cadastro anterior, refeito depois com outra senha
         if not token_e_da_senha_atual(impressao_senha, usuario.senha):
@@ -152,4 +152,4 @@ class PersonalCadastroService:
             )
 
         logger.info('E-mail confirmado', extra={'usuario_id': usuario.id})
-        return {'message':"E-mail confirmado com sucesso!"}
+        return {'message':"E-mail confirmado com sucesso!", "status": "confirmado"}

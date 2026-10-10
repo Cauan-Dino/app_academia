@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
-from urllib.parse import unquote
+from urllib.parse import quote, unquote
 
 import httpx2
 import pytest
@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
-from back_end.auth.auth_token_itsdangerous import validar_token_alterar_senha
+from back_end.auth.auth_token_itsdangerous import gerar_token_alterar_senha, validar_token_alterar_senha
 from back_end.routers.personal.update_personal import router as rotas_senha
 from back_end.schemas.personal_schema import EnviarEmailRedefinirSenha
 from back_end.services.infra.config.settings import settings
@@ -225,14 +225,24 @@ def cliente():
 
 
 def test_pagina_de_senha_abre_o_app_com_o_token(cliente):
-    resposta = cliente.get("/abrir-app/redefinir-senha", params={"token": "abc.def-ghi"})
+    token = gerar_token_alterar_senha("ana@example.com")
+
+    resposta = cliente.get("/abrir-app/redefinir-senha", params={"token": token})
 
     assert resposta.status_code == 200
     assert resposta.headers["content-type"].startswith("text/html")
-    assert "treinopro://senha/redefinir-senha?token=abc.def-ghi" in resposta.text
+    assert f"treinopro://senha/redefinir-senha?token={quote(token, safe='')}" in resposta.text
     # A página contém o token: não pode ficar em cache nem vazar pelo Referer.
     assert resposta.headers["cache-control"] == "no-store"
     assert resposta.headers["referrer-policy"] == "no-referrer"
+
+
+def test_pagina_de_senha_com_link_expirado_avisa_sem_abrir_o_app(cliente):
+    resposta = cliente.get("/abrir-app/redefinir-senha", params={"token": "abc.def-ghi"})
+
+    assert resposta.status_code == 400
+    assert "Link expirado" in resposta.text
+    assert "treinopro://senha" not in resposta.text
 
 
 def test_pagina_de_senha_nao_injeta_html_vindo_do_token(cliente):
@@ -240,9 +250,7 @@ def test_pagina_de_senha_nao_injeta_html_vindo_do_token(cliente):
 
     resposta = cliente.get("/abrir-app/redefinir-senha", params={"token": malicioso})
 
-    assert resposta.status_code == 200
     assert "<script>" not in resposta.text
-    assert "treinopro://senha/redefinir-senha?token=%22%3E%3Cscript%3E" in resposta.text
 
 
 def test_pagina_de_senha_exige_token(cliente):
