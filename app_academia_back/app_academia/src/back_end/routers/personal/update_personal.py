@@ -1,33 +1,15 @@
-from html import escape
 from urllib.parse import quote
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from back_end.services.domain.personal.update_personal_service import UpdatePersonalDetailsService
 from back_end.auth.jwt_token import verificar_access_token
+from back_end.auth.auth_token_itsdangerous import validar_token_alterar_senha
 from back_end.services.infra.database.database import sessao_db
 from sqlalchemy.ext.asyncio import AsyncSession
 from back_end.schemas.personal_schema import AlterarPersonalNome, AlterarSenhaPersonal, EnviarEmailRedefinirSenha
+from .pagina_link_email import ESQUEMA_APP, pagina_abrir_app_nova_senha, pagina_link_senha_expirado
 
 router = APIRouter(tags=['Atualizar Informações Personal'])
-
-# Igual ao "scheme" do front_end/app.json.
-ESQUEMA_APP = "treinopro"
-
-PAGINA_ABRIR_APP = """<!doctype html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="0; url={link_app}">
-<title>TreinoPro</title>
-</head>
-<body style="font-family: Arial, sans-serif; color: #121815; text-align: center; padding: 48px 24px;">
-<h1 style="font-size: 22px;">Redefinir senha</h1>
-<p>Toque no botão para abrir o TreinoPro e criar sua nova senha.</p>
-<p><a href="{link_app}" style="display: inline-block; background: #B9F227; color: #121815; padding: 14px 24px; border-radius: 10px; font-weight: bold; text-decoration: none;">Abrir o app</a></p>
-<p style="font-size: 13px; color: #68726D;">Abra este link no celular em que o TreinoPro está instalado.</p>
-</body>
-</html>"""
 
 
 # Página do link do e-mail de senha. O Gmail não aceita links treinopro:// e os
@@ -35,15 +17,15 @@ PAGINA_ABRIR_APP = """<!doctype html>
 # abre o app, que mostra a tela de nova senha e chama o PATCH com o token.
 @router.get('/abrir-app/redefinir-senha', response_class=HTMLResponse, include_in_schema=False)
 async def abrir_app_redefinir_senha(token: str) -> HTMLResponse:
-    # O token vem da URL: codificado e escapado, não consegue injetar HTML na página.
-    link_app = escape(f"{ESQUEMA_APP}://senha/redefinir-senha?token={quote(token, safe='')}")
-    return HTMLResponse(
-        PAGINA_ABRIR_APP.format(link_app=link_app),
-        headers={
-            "Cache-Control": "no-store",  # a página contém o token
-            "Referrer-Policy": "no-referrer",
-        },
-    )
+    # Link expirado: avisa aqui, em vez de abrir o app só para o PATCH falhar.
+    try:
+        validar_token_alterar_senha(token=token)
+    except HTTPException:
+        return pagina_link_senha_expirado()
+
+    # O token vai codificado na URL; a página escapa todo o HTML.
+    link_app = f"{ESQUEMA_APP}://senha/redefinir-senha?token={quote(token, safe='')}"
+    return pagina_abrir_app_nova_senha(link_app)
 
 
 @router.patch('/alterar-nome')

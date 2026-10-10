@@ -80,7 +80,7 @@ class DeletePersonalAcountService:
 
         # Verifica se a conta ja foi excluida
         if usuario.usuario_ativo == False:
-            return {'message':'Usuário já está excluido!'}
+            return {'message':'Usuário já está excluido!', 'status': 'ja_excluida'}
 
         # Exclui logicamente a conta do usuario
         usuario.usuario_ativo = False
@@ -98,4 +98,4 @@ class DeletePersonalAcountService:
         await redis_client.delete(f"usuario_status:{email}")
 
         logger.info('Conta Excluída', extra={'usuario_id': usuario.id})
-        return {'message':"Conta Excluída com sucesso!"}
+        return {'message':"Conta Excluída com sucesso!", 'status': 'excluida'}
